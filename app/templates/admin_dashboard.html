@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Login & Dashboard</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f5f6fa; }
+    .container { display: flex; }
+    .sidebar {
+      width: 220px; background-color: #2f3640; color: #fff; padding: 20px; height: 100vh;
+    }
+    .sidebar h2 { margin-bottom: 20px; font-size: 18px; }
+    .sidebar ul { list-style: none; padding: 0; }
+    .sidebar li { margin: 10px 0; }
+    .main {
+      flex: 1; padding: 40px;
+    }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 8px; border: 1px solid #ccc;
+    }
+    button {
+      padding: 10px 20px; background-color: #0984e3; color: white; border: none;
+      cursor: pointer;
+    }
+    .header {
+      background-color: #dfe6e9; padding: 15px 20px; margin-bottom: 30px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Office Admin Portal</h1>
+  <p><strong>Logged in as:</strong> mdraihanraza@admin.com</p>
+</div>
+
+<div class="container">
+  <div class="sidebar">
+    <h2>Navigation</h2>
+    <ul>
+      <li>Enroll Students</li>
+      <li>Enroll Teachers</li>
+      <li>Mark Attendance</li>
+      <li>Check In</li>
+      <li>Payments</li>
+      <li>Customer Support</li>
+      <li>Log Out</li>
+    </ul>
+  </div>
+
+  <div class="main">
+    <h2>Admin Login</h2>
+    <form id="adminLoginForm">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="admin" />
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="adminpass" />
+      </div>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+
+    const res = await fetch('/api/admin/login2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    const data = await res.json();
+    if (res.status === 200) {
+      localStorage.setItem('token', data.token);
+      window.location.href = '/admin-dashboard';
+    } else {
+      alert("Login failed: " + data.error);
+    }
+  });
+</script>
+
+</body>
+</html>

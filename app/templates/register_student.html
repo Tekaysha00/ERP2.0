@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register Student</title>
+</head>
+<body>
+    <h2>Register New Student</h2>
+
+    <form id="studentForm">
+        <label>Full Name: <input type="text" name="Fullname" required></label><br>
+        <label>Phone: <input type="text" name="phone" required></label><br>
+        <label>Date of Birth: <input type="date" name="dob" required></label><br>
+        <label>Gender:
+            <select name="gender" required>
+                <option value="">--Select--</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+            </select>
+        </label><br>
+        <label>ID Mark: <input type="text" name="idMark"></label><br>
+        <label>Blood Group: <input type="text" name="bloodGroup"></label><br>
+        <label>Admission No: <input type="text" name="admissionNo"></label><br>
+        <label>Father's Name: <input type="text" name="fatherName"></label><br>
+        <label>Occupation: <input type="text" name="occupation"></label><br>
+        <label>Village: <input type="text" name="village"></label><br>
+        <label>Post Office (PO): <input type="text" name="po"></label><br>
+        <label>Police Station (PS): <input type="text" name="ps"></label><br>
+        <label>Pin Code: <input type="text" name="pinCode"></label><br>
+        <label>District: <input type="text" name="district"></label><br>
+        <label>State: <input type="text" name="state"></label><br>
+        <label>Class Name: <input type="text" name="classname"></label><br>
+
+        <button type="submit" id="submitBtn">Register Student</button>
+    </form>
+
+    <script>
+        document.getElementById('studentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const form = e.target;
+            const formData = new FormData(form);
+            const data = {};
+            formData.forEach((value, key) => data[key] = value);
+
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert("No token found. Please log in first.");
+                return;
+            }
+
+            const button = document.getElementById('submitBtn');
+            button.disabled = true;
+            button.textContent = "Registering...";
+
+            try {
+                const response = await fetch("/api/students/register-student", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                let result;
+                try {
+                    result = await response.json();
+                } catch (jsonError) {
+                    const rawText = await response.text();
+                    console.error("Non-JSON response:", rawText);
+                    alert("Unexpected server response. Check console for details.");
+                    return;
+                }
+
+                if (response.ok) {
+                    alert(result.message);
+                    form.reset();
+                } else {
+                    alert(result.error || "Registration failed.");
+                }
+            } catch (err) {
+                console.error("Network error:", err);
+                alert("Something went wrong. Please try again.");
+            } finally {
+                button.disabled = false;
+                button.textContent = "Register Student";
+            }
+        });
+    </script>
+</body>
+</html>
