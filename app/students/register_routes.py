@@ -159,12 +159,14 @@ def register_student():
         )
 
         db.session.add(student)
-        db.session.commit()
-
+        db.session.flush()
+        
 
         #new line for fee record auto save
-        from app.students.payment_routes import ensure_fee_records_for_student
+        from app.students.fee_service import ensure_fee_records_for_student
         ensure_fee_records_for_student(student.id)
+        
+        db.session.commit()
 
 
         return jsonify({
