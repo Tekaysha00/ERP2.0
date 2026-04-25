@@ -29,6 +29,7 @@ from app.Teachers.Teachers_dashboard import teacher_dashboard_bp
 from app.students.routes import students_bp
 from app.students.payment_routes import payment_bp
 from app.Admin.admin_dashboard import dashboard_bp
+from app.students.student_details import student_details_bp
 
 # Ensure logging prints to console for CLI visibility
 logging.basicConfig(level=logging.DEBUG)
@@ -104,7 +105,14 @@ def create_app():
       
 
     # CORS
-    CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}}, supports_credentials=True)
+    CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            "http://localhost:5173",
+            "https://Steelops.vercel.app"
+        ]
+    }
+}, supports_credentials=True)
 
     # Initialize extensions (db.init_app after config)
     db.init_app(app)
@@ -132,6 +140,7 @@ def create_app():
     app.register_blueprint(students_bp)
     app.register_blueprint(payment_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(student_details_bp)
 
     app.logger.debug("Blueprints registered.")
 

@@ -8,10 +8,20 @@ from flask_cors import cross_origin
 from sqlalchemy import func
 from io import BytesIO
 from app.utils.helpers import format_classname
+import os
+from werkzeug.utils import secure_filename
+from app.models.homework_model import Homework
 
 
 student_bp_view = Blueprint('student_bp_view', __name__, url_prefix='/api/student')
 UPLOAD_FOLDER = 'static/uploads'
+
+
+# ====== homework - upload =====
+ALLOWED_EXTENSIONS = {'pdf', 'mp3', 'wav', 'mp4', 'mov', 'webm'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # ------- HOMEWORK-DOWNLOAD ------ 
 
@@ -57,13 +67,29 @@ def view_homework():
         "assignments": []
     }
 
-    for a in assignments:
-        response['assignments'].append({
-            'title': a.title,
-            'subject': a.subject,
-            'description': a.description,
-            'download_url': f'/api/student/download/{a.filename}' if a.filename else None
-        })
+    if not assignments:
+        response["assignments"] = [
+            {
+                "title": "Math Homework",
+                "subject": "Mathematics",
+                "description": "Solve exercise 1.1 questions 1 to 10",
+                "download_url": None
+            },
+            {
+                "title": "Science Project",
+                "subject": "Science",
+                "description": "Make a model of solar system",
+                "download_url": None
+            }
+        ]
+    else:
+        for a in assignments:
+            response['assignments'].append({
+                'title': a.title,
+                'subject': a.subject,
+                'description': a.description,
+                'download_url': f'/api/student/download/{a.filename}' if a.filename else None
+            })
     return jsonify(response)
 
 
@@ -73,6 +99,78 @@ def download_assignment(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
 
+
+# ========= homework-upload ===========
+
+@student_bp_view.route('/upload-homework', methods=['POST'])
+@jwt_required()
+def upload_homework():
+
+    file = request.files.get('file')
+    assignment_id = request.form.get('assignment_id')
+
+    if not file or not allowed_file(file.filename):
+        return jsonify({"error": "Invalid file"}), 400
+
+    # 🔐 Get student from JWT
+    user_id = get_jwt_identity()
+    student = Student.query.filter_by(user_id=user_id).first()
+
+    if not student:
+        return jsonify({"error": "Student not found"}), 404
+
+    filename = secure_filename(file.filename)
+
+    upload_folder = os.path.join('uploads/homework')
+    os.makedirs(upload_folder, exist_ok=True)
+
+    file_path = os.path.join(upload_folder, filename)
+    file.save(file_path)
+
+    ext = filename.split('.')[-1].lower()
+    if ext in ['mp3', 'wav']:
+        file_type = 'audio'
+    elif ext in ['mp4', 'mov','webm']:
+        file_type = 'video'
+    else:
+        file_type = 'pdf'
+
+    assignment_id = int(assignment_id) if assignment_id else None
+
+    new_hw = Homework(
+        student_id=student.id,              
+        student_name=student.FullName,      
+        file_url=file_path,
+        assignment_id=assignment_id,
+        file_type=file_type
+    )
+
+    db.session.add(new_hw)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Homework uploaded successfully",
+        "file_url": file_path
+    })
+
+
+
+# ====== view homework uploaded ==
+@student_bp_view.route('/my-homeworks/<int:student_id>', methods=['GET'])
+def get_my_homeworks(student_id):
+
+    data = Homework.query.filter_by(student_id=student_id).all()
+
+    result = []
+    for hw in data:
+        result.append({
+            "id": hw.id,
+            "file_url": hw.file_url,
+            "file_type": hw.file_type,
+            "created_at": hw.created_at
+        })
+
+    return jsonify(result)
 
 # ----- STUDENTS - ACADEMIC - UPDATES ------- 
  

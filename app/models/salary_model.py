@@ -8,6 +8,7 @@ class Salary(db.Model):
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False)
     month = db.Column(db.String(20), nullable=False)
     amount = db.Column(db.Integer, nullable=False)
+    year = db.Column(db.Integer),
     status = db.Column(db.String(20), default='unpaid')
     payment_date = db.Column(db.Date, nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
