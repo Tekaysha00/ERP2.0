@@ -9,6 +9,7 @@ from app.models.student_model import StudentAttendance, Student
 from app.models.assignment_model import Assignment
 from app.models.Tattendance import Attendance, TeacherAttendance
 from app.models.salary_model import Salary
+from app.models.homework_model import Homework
 import os, re
 from app.models.class_model import Class 
 from sqlalchemy import func, or_
@@ -641,3 +642,45 @@ def view_salary():
         "salary_history": salary_history
     })
 
+
+# ===== student submission view ====== 
+
+@teacher_bp_view.route('/student-submissions', methods=['GET'])
+@jwt_required()
+def student_submissions():
+
+    claims = get_jwt()
+
+    if claims.get("role") not in ["teacher", "staff"]:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    teacher_id = claims.get("teacher_id")
+
+    teacher = Teacher.query.get(teacher_id)
+
+    if not teacher:
+        return jsonify({"error": "Teacher not found"}), 404
+
+    submissions = db.session.query(Homework, Student)\
+        .join(Student, Homework.student_id == Student.id)\
+        .all()
+
+    result = []
+
+    for hw, student in submissions:
+        result.append({
+            "student_name": student.FullName,
+            "class": student.classname,
+            "file_url": hw.file_url,
+            "file_type": hw.file_type,
+            "submitted_at": hw.created_at
+        })
+
+    return jsonify({
+        "teacher": {
+            "fullName": teacher.fullName,
+            "mobile": teacher.mobile,
+            "email": teacher.email
+        },
+        "submissions": result
+    })
