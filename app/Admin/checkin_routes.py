@@ -6,7 +6,6 @@ import razorpay
 import hmac
 import hashlib
 from sqlalchemy import func
-from razorpay_config import razorpay_client
 import os
 from io import BytesIO
 from werkzeug.utils import secure_filename
