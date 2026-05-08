@@ -10,3 +10,4 @@ redis==5.0.4
 Flask-Caching==2.3.0
 gunicorn==21.2.0
 razorpay
+stripe==12.4.0
