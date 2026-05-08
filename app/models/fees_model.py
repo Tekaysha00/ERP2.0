@@ -10,9 +10,20 @@ class FeeRecord(db.Model):
     sports_fee = db.Column(db.Integer)
     other_fee = db.Column(db.Integer)
     total_amount = db.Column(db.Integer)
-    upi_id = db.Column(db.String(100))
-    razorpay_order_id = db.Column(db.String(100))
-    payment_status = db.Column(db.String(20), default='Pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    student = db.relationship('Student', backref='fee_records')
+    stripe_session_id = db.Column(db.String(255))
+    payment_gateway = db.Column(db.String(50))
+    payment_for = db.Column(db.String(20))
+    currency = db.Column(db.String(20))
+    payment_status = db.Column(
+        db.String(20),
+        default='Pending'
+    )
+    payment_date = db.Column(db.DateTime)
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+    student = db.relationship(
+        'Student',
+        backref='fee_records'
+    )
