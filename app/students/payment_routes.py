@@ -2,10 +2,18 @@ from flask import Blueprint, request, jsonify, url_for
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.models.fees_model import FeeRecord
 from app.models.student_model import Student
-from razorpay_config import razorpay_client
 from app import db
 from datetime import datetime
 from app.utils.helpers import format_classname
+
+import stripe
+
+from stripe_config import (
+    STRIPE_SECRET_KEY,
+    STRIPE_PUBLISHABLE_KEY
+)
+
+stripe.api_key = STRIPE_SECRET_KEY
 
 
 payment_bp = Blueprint('payment_bp', __name__, url_prefix='/api/student')
@@ -87,78 +95,159 @@ def get_fee_structure(month):
 @payment_bp.route('/pay-now/initiate-payment', methods=['POST'])
 @jwt_required()
 def initiate_payment():
-    # ✅ Same as get_fee_structure
+
     claims = get_jwt()
+
     student_id = claims.get("student_id")
-    print("INITIATE PAYMENT -> student_id from JWT claims:", student_id)
+
+    print("INITIATE PAYMENT -> student_id:", student_id)
 
     if not student_id:
-        return jsonify({"error": "Student ID missing in token"}), 400
+        return jsonify({
+            "error": "Student ID missing"
+        }), 400
 
     try:
         student_id_int = int(student_id)
-    except (TypeError, ValueError):
-        return jsonify({"error": "Invalid student ID"}), 400
 
-    # ✅ Make sure student actually exists
+    except (TypeError, ValueError):
+        return jsonify({
+            "error": "Invalid student ID"
+        }), 400
+
     student = Student.query.get(student_id_int)
+
     if not student:
-        return jsonify({"error": f"Student with ID {student_id_int} not found"}), 404
+        return jsonify({
+            "error": "Student not found"
+        }), 404
 
     data = request.json
-    month = data["month"]
-    upi_id = data["upi_id"]
 
-    # ✅ Use int student_id everywhere
+    month = data.get("month")
+
+    payment_for = data.get("payment_for", "india")
+
     fee_record = FeeRecord.query.filter_by(
-        student_id=student_id_int, month=month
+        student_id=student_id_int,
+        month=month
     ).first()
 
+    # Fee Amount
     if fee_record:
-        total_amount = (
-            fee_record.school_fee + fee_record.sports_fee + fee_record.other_fee
-        )
-    else:
-        total_amount = 1700  # dummy paisa
 
-    razorpay_order = razorpay_client.order.create({
-        "amount": total_amount * 100,  # paise
-        "currency": "INR",
-        "payment_capture": 1
-    })
+        total_amount = (
+            fee_record.school_fee +
+            fee_record.sports_fee +
+            fee_record.other_fee
+        )
+
+    else:
+
+        total_amount = 1700
+
+    # Currency
+    currency = "aed" if payment_for == "uae" else "inr"
 
     try:
+
+        # ✅ STRIPE CHECKOUT SESSION
+        session = stripe.checkout.Session.create(
+
+            payment_method_types=['card'],
+
+            line_items=[{
+                'price_data': {
+
+                    'currency': currency,
+
+                    'product_data': {
+                        'name': f'School Fee - {month}'
+                    },
+
+                    'unit_amount': int(total_amount * 100),
+                },
+
+                'quantity': 1,
+            }],
+
+            mode='payment',
+
+            success_url='http://localhost:3000/payment-success',
+
+            cancel_url='http://localhost:3000/payment-cancel',
+
+            metadata={
+                "student_id": student_id_int,
+                "month": month,
+                "payment_for": payment_for
+            }
+        )
+
+        # SAVE DB
         if not fee_record:
+
             fee_record = FeeRecord(
+
                 student_id=student_id_int,
+
                 month=month,
+
                 school_fee=1200,
                 sports_fee=300,
                 other_fee=200,
+
                 total_amount=total_amount,
-                upi_id=upi_id,
-                razorpay_order_id=razorpay_order["id"],
+
                 payment_status="Pending",
+
+                stripe_session_id=session.id,
+
+                payment_gateway="stripe",
+
+                payment_for=payment_for,
+
+                currency=currency
             )
+
             db.session.add(fee_record)
+
         else:
-            fee_record.razorpay_order_id = razorpay_order["id"]
-            fee_record.upi_id = upi_id
+
             fee_record.total_amount = total_amount
 
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print("DB ERROR IN initiate_payment:", e)
-        return jsonify({"error": "Database error while creating fee record"}), 500
+            fee_record.payment_gateway = "stripe"
 
-    return jsonify({
-        "order_id": razorpay_order["id"],
-        "amount": total_amount,
-        "currency": "INR",
-        "upi_id": upi_id,
-        "razorpay_key": "rzp_test_20tkfyOZteuJyu"
-    })
+            fee_record.payment_for = payment_for
+
+            fee_record.currency = currency
+
+            fee_record.stripe_session_id = session.id
+
+        db.session.commit()
+
+        return jsonify({
+
+            "checkout_url": session.url,
+
+            "session_id": session.id,
+
+            "amount": total_amount,
+
+            "currency": currency,
+
+            "publishable_key": STRIPE_PUBLISHABLE_KEY
+        })
+
+    except Exception as e:
+
+        db.session.rollback()
+
+        print("STRIPE ERROR:", e)
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 
@@ -170,7 +259,9 @@ def update_payment_status():
     order_id = data.get('order_id')
     payment_result = data.get('status')  # Success / Failed
 
-    record = FeeRecord.query.filter_by(razorpay_order_id=order_id).first()
+    record = FeeRecord.query.filter_by(
+    stripe_session_id=order_id
+).first()
 
     if not record:
         return jsonify({'message': 'Order not found'}), 404
