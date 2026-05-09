@@ -783,11 +783,15 @@ def student_detail(student_id):
         return jsonify({"message": "Student details updated successfully"}), 200
     
 @checkin_bp.route('/classes', methods=['GET'])
-@cache.cached(timeout=600, key_prefix='all_classes')
 def get_classes():
-    classes = Class.query.order_by(Class.name).distinct().all()
-    class_list = [c.name for c in classes]
-    return jsonify({"classes": class_list}), 200
+    try:
+        classes = Class.query.order_by(Class.name).all()
+        class_list = [c.name for c in classes]
+
+        return jsonify({"classes": class_list}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @checkin_bp.route('/students/by-class', methods=['GET'])
 def get_students_by_class():
