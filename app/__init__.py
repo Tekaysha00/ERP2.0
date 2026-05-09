@@ -120,7 +120,6 @@ def create_app():
     bcrypt.init_app(app)
     jwt.init_app(app)
     cache.init_app(app)
-    cors.init_app(app, supports_credentials=True)
 
 
     # Register blueprints
