@@ -106,7 +106,7 @@ def create_app():
 
     # CORS
     CORS(app, resources={
-    r"/api/*": {
+    r"/*": {
         "origins": [
             "http://localhost:5173",
             "https://steelops.vercel.app"
