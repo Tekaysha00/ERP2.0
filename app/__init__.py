@@ -109,7 +109,7 @@ def create_app():
     r"/api/*": {
         "origins": [
             "http://localhost:5173",
-            "https://Steelops.vercel.app"
+            "https://steelops.vercel.app"
         ]
     }
 }, supports_credentials=True)
