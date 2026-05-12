@@ -11,6 +11,8 @@ from app.models.payment_model import Payment
 from app.models.student_model import Student
 from app.models.notice_model import Notice
 from app.models.raise_issue import Issue
+import os
+from werkzeug.utils import secure_filename
 
 
 
@@ -559,31 +561,6 @@ def get_uploaded_students():
         "message": "Students who uploaded payment screenshot",
         "data": uploaded_students
     })
-
-# ========== notice- create  ========= 
-
-@dashboard_bp.route('/create-notice', methods=['POST'])
-def create_notice():
-    data = request.get_json()
-
-    title = data.get('title')
-    message = data.get('message')
-    target = data.get('target', 'all')  # default = all
-
-    if not title or not message:
-        return jsonify({"error": "Title and message required"}), 400
-
-    notice = Notice(
-        title=title,
-        message=message,
-        target=target
-    )
-
-    db.session.add(notice)
-    db.session.commit()
-
-    return jsonify({"msg": "Notice created successfully"})
-
 
 
 # ====== view student issue ==== 
