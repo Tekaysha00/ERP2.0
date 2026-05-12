@@ -9,10 +9,10 @@ from app.models.live_class import LiveClass
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.models.payment_model import Payment
 from app.models.student_model import Student
-from app.models.notice_model import Notice
 from app.models.raise_issue import Issue
 import os
-from werkzeug.utils import secure_filename
+from app.models.exam_link import ExamLink
+
 
 
 
@@ -313,6 +313,35 @@ def get_live_classes_admin():
     ]), 200
 
 
+# =========== VIEW ALL EXAM LINK ======= 
+
+@dashboard_bp.route('/all-exams', methods=['GET'])
+@jwt_required()
+def get_all_exams():
+
+    claims = get_jwt()
+
+    # 🔐 Only Admin
+    if claims.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+
+    # 📥 Fetch All Exams
+    exams = ExamLink.query.order_by(
+        ExamLink.exam_time.desc()
+    ).all()
+
+    # 📤 Response
+    return jsonify([
+        {
+            "id": e.id,
+            "class_id": e.class_id,
+            "subject": e.subject,
+            "teacher_id": e.teacher_id,
+            "exam_link": e.exam_link,
+            "exam_time": e.exam_time.strftime("%Y-%m-%d %H:%M")
+        }
+        for e in exams
+    ]), 200
 
 # ======== VIEW - NOTICE JST FOR CHECK WITH DUMMY ===== =
 
