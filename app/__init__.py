@@ -30,6 +30,7 @@ from app.students.routes import students_bp
 from app.students.payment_routes import payment_bp
 from app.Admin.admin_dashboard import dashboard_bp
 from app.students.student_details import student_details_bp
+from app.Admin.notices import notices_bp
 
 # Ensure logging prints to console for CLI visibility
 logging.basicConfig(level=logging.DEBUG)
@@ -140,6 +141,7 @@ def create_app():
     app.register_blueprint(payment_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(student_details_bp)
+    app.register_blueprint(notices_bp)
 
     app.logger.debug("Blueprints registered.")
 
