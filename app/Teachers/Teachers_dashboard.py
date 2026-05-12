@@ -198,17 +198,21 @@ def get_my_issues(teacher_id):
 # ========== EXAM LINK GENERATOR ======== 
 
 @teacher_dashboard_bp.route('/generate-exam-link', methods=['POST'])
+@jwt_required(optional=True)
 def generate_exam():
+
     data = request.get_json()
 
     # 🔐 JWT OPTIONAL
-    teacher_id = 1
+    teacher_id = None
+
     try:
         verify_jwt_in_request()
         claims = get_jwt()
 
         if claims.get("role") == "teacher":
             teacher_id = int(get_jwt_identity())
+
     except:
         pass
 
@@ -220,6 +224,7 @@ def generate_exam():
     if not class_id or not subject or not exam_time_str:
         return jsonify({"error": "Missing fields"}), 400
 
+    # 🕒 DATE FORMAT
     try:
         exam_time = datetime.fromisoformat(exam_time_str)
     except:
@@ -236,7 +241,7 @@ def generate_exam():
         return jsonify({"error": "Exam already scheduled"}), 400
 
     # 🔥 GENERATE LINK
-    link = generate_meeting_link(data['class_id'], prefix="exam")
+    link = generate_meeting_link(class_id, prefix="exam")
 
     # 💾 SAVE
     exam = ExamLink(
@@ -251,7 +256,7 @@ def generate_exam():
     db.session.commit()
 
     return jsonify({
-        "message": "Exam link generated",
+        "message": "Exam link generated successfully",
         "link": link
     }), 201
 
@@ -260,7 +265,7 @@ def generate_exam():
 @teacher_dashboard_bp.route('/my-exams', methods=['GET'])
 def get_my_exams():
 
-    teacher_id = 1  
+    teacher_id = None  
 
     try:
         verify_jwt_in_request()
@@ -272,7 +277,7 @@ def get_my_exams():
             return jsonify({"error": "Only teachers allowed"}), 403
 
     except Exception:
-        pass  # no token → testing mode
+        teacher_id = 1  # no token → testing mode
 
     exams = ExamLink.query.filter_by(teacher_id=teacher_id)\
         .order_by(ExamLink.exam_time.desc()).all()
