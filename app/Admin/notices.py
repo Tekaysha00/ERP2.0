@@ -7,7 +7,8 @@ from app.models.student_model import Student
 from app.models.notice_model import Notice
 import os
 from werkzeug.utils import secure_filename
-
+from app.models.raise_issue import Issue
+from flask_jwt_extended import jwt_required, get_jwt
 
 
 
@@ -125,3 +126,175 @@ def get_teachers():
         })
 
     return jsonify(data)
+
+
+
+
+# ===== show issue raise by teacher ======= 
+from flask import jsonify, request
+import os
+
+# =========================
+# GET ALL ISSUES FOR ADMIN
+# =========================
+@notices_bp.route('/view-teachers/issue', methods=['GET'])
+def get_all_issues():
+    try:
+
+        issues = Issue.query.order_by(Issue.id.desc()).all()
+
+        issue_list = []
+
+        for issue in issues:
+
+            attachment_url = None
+
+            # attachment download/view url
+            if issue.attachment:
+                filename = os.path.basename(issue.attachment)
+
+                attachment_url = (
+                    f"{request.host_url}uploads/issues/{filename}"
+                )
+
+            issue_list.append({
+                "id": issue.id,
+                "sender_id": issue.sender_id,
+                "sender_role": issue.sender_role,
+                "receiver_id": issue.receiver_id,
+                "receiver_role": issue.receiver_role,
+                "message": issue.message,
+                "attachment": attachment_url,
+                "created_at": issue.created_at if hasattr(issue, 'created_at') else None
+            })
+
+        return jsonify({
+            "success": True,
+            "issues": issue_list
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+
+# ====== issue view for student =====
+
+@notices_bp.route('/view-student/issues', methods=['GET'])
+@jwt_required()
+def get_all_student_issues():
+    try:
+
+        claims = get_jwt()
+
+        # only admin allowed
+        if claims.get("role") != "admin":
+            return jsonify({
+                "error": "Only admin allowed"
+            }), 403
+
+        # get all student issues
+        issues = Issue.query.filter_by(sender_role="student")\
+                            .order_by(Issue.id.desc())\
+                            .all()
+
+        issue_list = []
+
+        for issue in issues:
+
+            attachment_url = None
+
+            # attachment url
+            if issue.attachment:
+                filename = os.path.basename(issue.attachment)
+
+                attachment_url = (
+                    f"{request.host_url}uploads/issues/{filename}"
+                )
+
+            issue_list.append({
+                "id": issue.id,
+                "sender_id": issue.sender_id,
+                "sender_role": issue.sender_role,
+                "receiver_id": issue.receiver_id,
+                "receiver_role": issue.receiver_role,
+                "subject": issue.subject,
+                "message": issue.message,
+                "attachment": attachment_url,
+                "created_at": issue.created_at if hasattr(issue, 'created_at') else None
+            })
+
+        return jsonify({
+            "success": True,
+            "issues": issue_list
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+
+
+# ===== view notices ===
+
+# ================= GET NOTICES =================
+
+@notices_bp.route('/get-notices', methods=['GET'])
+def get_notices():
+
+    target = request.args.get("target")       # student / teacher
+    classname = request.args.get("classname")
+    teacher_id = request.args.get("teacher_id")
+
+    query = Notice.query
+
+    # ================= FILTERS =================
+
+    # Student Notices
+    if target == "student":
+
+        query = query.filter_by(target="student")
+
+        if classname:
+            query = query.filter_by(classname=classname)
+
+    # Teacher Notices
+    elif target == "teacher":
+
+        query = query.filter_by(target="teacher")
+
+        if teacher_id:
+            query = query.filter_by(teacher_id=teacher_id)
+
+    # Invalid target
+    elif target:
+        return jsonify({
+            "error": "Invalid target"
+        }), 400
+
+    # ================= FETCH DATA =================
+
+    notices = query.order_by(Notice.id.desc()).all()
+
+    data = []
+
+    for notice in notices:
+
+        data.append({
+            "id": notice.id,
+            "title": notice.title,
+            "message": notice.message,
+            "target": notice.target,
+            "classname": notice.classname,
+            "teacher_id": notice.teacher_id,
+            "attachment": notice.attachment,
+            "created_at": notice.created_at if hasattr(notice, "created_at") else None
+        })
+
+    return jsonify(data), 200
