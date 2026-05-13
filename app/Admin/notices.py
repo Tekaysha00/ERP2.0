@@ -122,7 +122,7 @@ def get_teachers():
     for t in teachers:
         data.append({
             "id": t.id,
-            "name": t.FullName
+            "name": t.fullName
         })
 
     return jsonify(data)
@@ -243,58 +243,47 @@ def get_all_student_issues():
 
 # ===== view notices ===
 
-# ================= GET NOTICES =================
+@notices_bp.route('/view', methods=['GET'])
+@jwt_required()
+def admin_get_notices():
 
-@notices_bp.route('/get-notices', methods=['GET'])
-def get_notices():
+    claims = get_jwt()
+    if claims.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    
+    
+    notices = [
+        {
+            "id": 1,
+            "title": "Holiday Announcement",
+            "message": "School will remain closed tomorrow due to heavy rain.",
+            "teacher_id": 101,
+            "teacher_name": "Rahul Sharma",
+            "created_at": datetime(2026, 4, 20, 10, 30).strftime("%Y-%m-%d %H:%M:%S"),
+            "priority": "High"
+        },
+        {
+            "id": 2,
+            "title": "Exam Notice",
+            "message": "Unit test will start from next Monday.",
+            "teacher_id": 102,
+            "teacher_name": "Anita Verma",
+            "created_at": datetime(2026, 4, 19, 14, 15).strftime("%Y-%m-%d %H:%M:%S"),
+            "priority": "Medium"
+        },
+        {
+            "id": 3,
+            "title": "PTM Meeting",
+            "message": "Parent-teacher meeting scheduled on Saturday.",
+            "teacher_id": 103,
+            "teacher_name": "Suresh Kumar",
+            "created_at": datetime(2026, 4, 18, 9, 0).strftime("%Y-%m-%d %H:%M:%S"),
+            "priority": "Low"
+        }
+    ]
 
-    target = request.args.get("target")       # student / teacher
-    classname = request.args.get("classname")
-    teacher_id = request.args.get("teacher_id")
-
-    query = Notice.query
-
-    # ================= FILTERS =================
-
-    # Student Notices
-    if target == "student":
-
-        query = query.filter_by(target="student")
-
-        if classname:
-            query = query.filter_by(classname=classname)
-
-    # Teacher Notices
-    elif target == "teacher":
-
-        query = query.filter_by(target="teacher")
-
-        if teacher_id:
-            query = query.filter_by(teacher_id=teacher_id)
-
-    # Invalid target
-    elif target:
-        return jsonify({
-            "error": "Invalid target"
-        }), 400
-
-    # ================= FETCH DATA =================
-
-    notices = query.order_by(Notice.id.desc()).all()
-
-    data = []
-
-    for notice in notices:
-
-        data.append({
-            "id": notice.id,
-            "title": notice.title,
-            "message": notice.message,
-            "target": notice.target,
-            "classname": notice.classname,
-            "teacher_id": notice.teacher_id,
-            "attachment": notice.attachment,
-            "created_at": notice.created_at if hasattr(notice, "created_at") else None
-        })
-
-    return jsonify(data), 200
+    return jsonify({
+        "status": "success",
+        "total_notices": len(notices),
+        "data": notices
+    }), 200
