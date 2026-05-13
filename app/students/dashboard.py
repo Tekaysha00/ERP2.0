@@ -65,57 +65,58 @@ def get_student(id):
 def get_notices():
 
     claims = get_jwt()
-    role = claims.get("role")   # student / teacher
+    role = claims.get("role")
 
-    notices = Notice.query.order_by(Notice.created_at.desc()).all()
+    # Only student allowed
+    if role != "student":
+        return jsonify({
+            "error": "Only students allowed"
+        }), 403
 
-    # ========== dummy data ===============
+    student_id = get_jwt_identity()
+
+    student = Student.query.get(student_id)
+
+    if not student:
+        return jsonify({
+            "error": "Student not found"
+        }), 404
+
+    # ===== FETCH CLASSWISE NOTICES =====
+
+    notices = Notice.query.filter(
+        Notice.target == "student",
+        Notice.classname == student.classname
+    ).order_by(Notice.created_at.desc()).all()
+
+    # ===== DUMMY DATA =====
+
     if not notices:
-        dummy_data = [
+        return jsonify([
             {
                 "id": 1,
-                "title": "Welcome to ERP",
-                "message": "This is your first notice. Stay updated with announcements.",
-                "target": "all",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
-            },
-            {
-                "id": 2,
-                "title": "Holiday Notice",
-                "message": "School will remain closed on Sunday.",
-                "target": "student",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
-            },
-            {
-                "id": 3,
-                "title": "Staff Meeting",
-                "message": "All teachers must attend meeting at 10 AM.",
-                "target": "teacher",
+                "title": "No Notices",
+                "message": "No notices available right now.",
+                "attachment": None,
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
-        ]
+        ])
 
-        # filter based on role
-        filtered_dummy = [
-            n for n in dummy_data
-            if n["target"] == "all" or n["target"] == role
-        ]
+    # ===== RESPONSE =====
 
-        return jsonify(filtered_dummy)
-
-    filtered = []
+    data = []
 
     for n in notices:
-        if n.target == "all" or n.target == role:
-            filtered.append({
-                "id": n.id,
-                "title": n.title,
-                "message": n.message,
-                "target": n.target,
-                "created_at": n.created_at.strftime("%Y-%m-%d %H:%M")
-            })
 
-    return jsonify(filtered)
+        data.append({
+            "id": n.id,
+            "title": n.title,
+            "message": n.message,
+            "attachment": n.attachment,
+            "created_at": n.created_at.strftime("%Y-%m-%d %H:%M")
+        })
+
+    return jsonify(data), 200
 
 
 # ============ view live class ======= 
