@@ -88,7 +88,11 @@ def view_homework():
                 'title': a.title,
                 'subject': a.subject,
                 'description': a.description,
-                'download_url': f'/api/student/download/{a.filename}' if a.filename else None
+                'download_url': url_for(
+            'student_bp_view.download_assignment',
+             filename=a.filename,
+              _external=True
+                 ) if a.filename else None
             })
     return jsonify(response)
 
@@ -96,7 +100,11 @@ def view_homework():
 @student_bp_view.route('/download/<filename>', methods=['GET'])
 @cross_origin()
 def download_assignment(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+    return send_from_directory(
+        UPLOAD_FOLDER,
+        filename,
+        as_attachment=True
+    )
 
 
 
