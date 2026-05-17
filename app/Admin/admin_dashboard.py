@@ -185,25 +185,30 @@ def salary_overview():
 def attendance_overview():
 
     claims = get_jwt()
+
     if claims.get("role") != "admin":
         return jsonify({"error": "Admin only"}), 403
-    
+
     from datetime import datetime, timedelta
-    import random
 
     today = datetime.today()
 
-    # Sunday se start
-    start_of_week = today - timedelta(days=today.weekday() + 1 if today.weekday() != 6 else 0)
+    # Sunday se week start
+    start_of_week = today - timedelta(
+        days=today.weekday() + 1 if today.weekday() != 6 else 0
+    )
 
     days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
+    # ================= STUDENT =================
     def student_attendance():
+
         weekly = []
         total_present = 0
         total_records = 0
 
         for i in range(7):
+
             day = start_of_week + timedelta(days=i)
 
             total = db.session.query(func.count(S_attendance.id)).filter(
@@ -215,27 +220,31 @@ def attendance_overview():
                 func.date(S_attendance.date) == day.date()
             ).scalar() or 0
 
-            # 🔥 Dummy fallback
-            if total == 0:
-                total = 10
-                present = random.randint(5, 10)
+            # divide by zero avoid
+            percent = round((present / total * 100), 1) if total > 0 else 0
 
-            percent = round((present / total * 100), 1)
             weekly.append(percent)
 
             total_present += present
             total_records += total
 
-        overall_present = round((total_present / total_records * 100), 1)
-        return overall_present, 100 - overall_present, weekly
+        overall_present = round(
+            (total_present / total_records * 100), 1
+        ) if total_records > 0 else 0
 
+        overall_absent = round(100 - overall_present, 1)
 
+        return overall_present, overall_absent, weekly
+
+    # ================= TEACHER =================
     def teacher_attendance():
+
         weekly = []
         total_present = 0
         total_records = 0
 
         for i in range(7):
+
             day = start_of_week + timedelta(days=i)
 
             total = db.session.query(func.count(TeacherAttendance.id)).filter(
@@ -247,20 +256,21 @@ def attendance_overview():
                 func.date(TeacherAttendance.attendance_date) == day.date()
             ).scalar() or 0
 
-            # 🔥 Dummy fallback
-            if total == 0:
-                total = 5
-                present = random.randint(2, 5)
+            # divide by zero avoid
+            percent = round((present / total * 100), 1) if total > 0 else 0
 
-            percent = round((present / total * 100), 1)
             weekly.append(percent)
 
             total_present += present
             total_records += total
 
-        overall_present = round((total_present / total_records * 100), 1)
-        return overall_present, 100 - overall_present, weekly
+        overall_present = round(
+            (total_present / total_records * 100), 1
+        ) if total_records > 0 else 0
 
+        overall_absent = round(100 - overall_present, 1)
+
+        return overall_present, overall_absent, weekly
 
     s_present, s_absent, s_weekly = student_attendance()
     t_present, t_absent, t_weekly = teacher_attendance()
