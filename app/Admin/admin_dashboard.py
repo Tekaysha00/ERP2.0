@@ -295,32 +295,40 @@ def attendance_overview():
 
 @dashboard_bp.route('/live-classes', methods=['GET'])
 @jwt_required()
-def get_live_classes_admin():
+def get_all_live_classes():
 
-    # 🔐 GET DATA FROM JWT
-    user_id = get_jwt_identity()   # ye string hoga
-    claims = get_jwt()             # yaha role milega
+    claims = get_jwt()
 
-    role = claims.get("role")
+    # 🔐 Admin only
+    if claims.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
 
-    # 🔒 ROLE CHECK
-    if role != "admin":
-        return jsonify({"error": "Only admin allowed"}), 403
+    # 📚 Fetch all live classes
+    live_classes = LiveClass.query.order_by(
+        LiveClass.start_time.desc()
+    ).all()
 
-    # 📊 FETCH DATA
-    classes = LiveClass.query.order_by(LiveClass.start_time.desc()).all()
+    result = []
 
-    return jsonify([
-        {
-            "id": c.id,
-            "class_id": c.class_id,
-            "subject": c.subject,
-            "link": c.meeting_link,
-            "time": c.start_time.strftime("%Y-%m-%d %H:%M"),
-            "teacher_id": c.teacher_id
-        }
-        for c in classes
-    ]), 200
+    for live in live_classes:
+
+        # 👨‍🏫 Teacher info
+        teacher = Teacher.query.get(live.teacher_id)
+
+        result.append({
+            "id": live.id,
+            "class_id": live.class_id,
+            "subject": live.subject,
+            "meeting_link": live.meeting_link,
+            "start_time": live.start_time.isoformat(),
+            "teacher_id": live.teacher_id,
+            "teacher_name": teacher.fullName if teacher else "Unknown"
+        })
+
+    return jsonify({
+        "total": len(result),
+        "live_classes": result
+    }), 200
 
 
 # =========== VIEW ALL EXAM LINK ======= 
