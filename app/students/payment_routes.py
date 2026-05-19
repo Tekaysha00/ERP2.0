@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.models.fees_model import FeeRecord
 from app.models.student_model import Student
 from app import db
+import os
 from datetime import datetime
 from app.utils.helpers import format_classname
 
@@ -100,8 +101,6 @@ def initiate_payment():
 
     student_id = claims.get("student_id")
 
-    print("INITIATE PAYMENT -> student_id:", student_id)
-
     if not student_id:
         return jsonify({
             "error": "Student ID missing"
@@ -111,6 +110,7 @@ def initiate_payment():
         student_id_int = int(student_id)
 
     except (TypeError, ValueError):
+
         return jsonify({
             "error": "Invalid student ID"
         }), 400
@@ -122,18 +122,37 @@ def initiate_payment():
             "error": "Student not found"
         }), 404
 
-    data = request.json
+    # =====================================================
+    # FORM DATA
+    # =====================================================
 
-    month = data.get("month")
+    month = request.form.get("month")
 
-    payment_for = data.get("payment_for", "india")
+    payment_for = request.form.get(
+        "payment_for",
+        "india"
+    )
+
+    screenshot = request.files.get("screenshot")
+
+    if not month:
+        return jsonify({
+            "error": "Month is required"
+        }), 400
+
+    # =====================================================
+    # FIND FEE RECORD
+    # =====================================================
 
     fee_record = FeeRecord.query.filter_by(
         student_id=student_id_int,
         month=month
     ).first()
 
-    # Fee Amount
+    # =====================================================
+    # CALCULATE FEES
+    # =====================================================
+
     if fee_record:
 
         total_amount = (
@@ -146,17 +165,55 @@ def initiate_payment():
 
         total_amount = 1700
 
-    # Currency
-    currency = "aed" if payment_for == "uae" else "inr"
+    # =====================================================
+    # SAVE SCREENSHOT
+    # =====================================================
+
+    screenshot_path = None
+
+    if screenshot:
+
+        upload_folder = "app/static/uploads/payments"
+
+        os.makedirs(upload_folder, exist_ok=True)
+
+        filename = (
+            f"{student_id_int}_{month}_{screenshot.filename}"
+        )
+
+        filepath = os.path.join(
+            upload_folder,
+            filename
+        )
+
+        screenshot.save(filepath)
+
+        screenshot_path = (
+            f"/static/uploads/payments/{filename}"
+        )
+
+    # =====================================================
+    # CURRENCY
+    # =====================================================
+
+    currency = (
+        "aed"
+        if payment_for == "uae"
+        else "inr"
+    )
 
     try:
 
-        # ✅ STRIPE CHECKOUT SESSION
+        # =================================================
+        # STRIPE SESSION
+        # =================================================
+
         session = stripe.checkout.Session.create(
 
             payment_method_types=['card'],
 
             line_items=[{
+
                 'price_data': {
 
                     'currency': currency,
@@ -165,7 +222,9 @@ def initiate_payment():
                         'name': f'School Fee - {month}'
                     },
 
-                    'unit_amount': int(total_amount * 100),
+                    'unit_amount': int(
+                        total_amount * 100
+                    ),
                 },
 
                 'quantity': 1,
@@ -178,13 +237,19 @@ def initiate_payment():
             cancel_url='http://localhost:3000/payment-cancel',
 
             metadata={
+
                 "student_id": student_id_int,
+
                 "month": month,
+
                 "payment_for": payment_for
             }
         )
 
-        # SAVE DB
+        # =================================================
+        # CREATE RECORD
+        # =================================================
+
         if not fee_record:
 
             fee_record = FeeRecord(
@@ -194,12 +259,18 @@ def initiate_payment():
                 month=month,
 
                 school_fee=1200,
+
                 sports_fee=300,
+
                 other_fee=200,
 
                 total_amount=total_amount,
 
                 payment_status="Pending",
+
+                approval_status="Pending",
+
+                payment_screenshot=screenshot_path,
 
                 stripe_session_id=session.id,
 
@@ -224,9 +295,20 @@ def initiate_payment():
 
             fee_record.stripe_session_id = session.id
 
+            # ✅ UPDATE SCREENSHOT
+            if screenshot_path:
+                fee_record.payment_screenshot = screenshot_path
+
+            # ✅ RESET APPROVAL
+            fee_record.approval_status = "Pending"
+
+            fee_record.payment_status = "Pending"
+
         db.session.commit()
 
         return jsonify({
+
+            "success": True,
 
             "checkout_url": session.url,
 
@@ -235,6 +317,8 @@ def initiate_payment():
             "amount": total_amount,
 
             "currency": currency,
+
+            "screenshot": screenshot_path,
 
             "publishable_key": STRIPE_PUBLISHABLE_KEY
         })
