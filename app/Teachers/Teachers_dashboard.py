@@ -67,33 +67,40 @@ def get_teacher(id):
 # ========================= LIVE CLASS API =========================
 
 @teacher_dashboard_bp.route('/create-live-class', methods=['POST'])
+@jwt_required()
 def create_live_class():
+
+    claims = get_jwt()
+
+    # 🔐 ONLY TEACHER
+    if claims.get("role") != "teacher":
+        return jsonify({
+            "error": "Only teachers can create live classes"
+        }), 403
+
+    teacher_id = get_jwt_identity()
+
     data = request.get_json()
 
-    # 🎯 DEFAULT (dummy teacher for testing)
-    teacher_id = 1
+    # ✅ VALIDATION
+    required_fields = ['class_id', 'subject', 'start_time']
 
-    # 🔐 TRY JWT (OPTIONAL — no crash if token missing)
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({
+                "error": f"{field} is required"
+            }), 400
+
+    # ⏰ DATETIME PARSE
     try:
-        verify_jwt_in_request()  # token ho to validate karega
-        current_user = get_jwt_identity()
-
-        if current_user and current_user.get("role") == "teacher":
-            teacher_id = current_user.get("id")
+        start_time = datetime.fromisoformat(
+            data['start_time']
+        )
 
     except Exception:
-        # token nahi hai → dummy use hoga
-        pass
-
-    # ⚠️ BASIC VALIDATION
-    if not data.get('class_id') or not data.get('subject') or not data.get('start_time'):
-        return jsonify({"error": "Missing required fields"}), 400
-
-    # ⏰ TIME PARSE
-    try:
-        start_time = datetime.fromisoformat(data['start_time'])
-    except Exception:
-        return jsonify({"error": "Invalid datetime format. Use YYYY-MM-DDTHH:MM:SS"}), 400
+        return jsonify({
+            "error": "Invalid datetime format. Use YYYY-MM-DDTHH:MM:SS"
+        }), 400
 
     # 🚫 DUPLICATE CHECK
     existing = LiveClass.query.filter_by(
@@ -102,12 +109,16 @@ def create_live_class():
     ).first()
 
     if existing:
-        return jsonify({"error": "Class already scheduled"}), 400
+        return jsonify({
+            "error": "Class already scheduled"
+        }), 400
 
-    # 🔥 AUTO LINK GENERATE (JITSI)
-    meet_link = generate_meeting_link(data['class_id'])
+    # 🔗 AUTO MEETING LINK
+    meet_link = generate_meeting_link(
+        data['class_id']
+    )
 
-    # 💾 SAVE TO DB
+    # 💾 SAVE
     live_class = LiveClass(
         class_id=data['class_id'],
         subject=data['subject'],
@@ -120,9 +131,16 @@ def create_live_class():
     db.session.commit()
 
     return jsonify({
-        "message": "Live class created",
-        "meet_link": meet_link,
-        "teacher_id": teacher_id
+        "success": True,
+        "message": "Live class created successfully",
+        "data": {
+            "id": live_class.id,
+            "class_id": live_class.class_id,
+            "subject": live_class.subject,
+            "meeting_link": live_class.meeting_link,
+            "start_time": live_class.start_time.isoformat(),
+            "teacher_id": live_class.teacher_id
+        }
     }), 201
 
 
@@ -198,21 +216,17 @@ def get_my_issues(teacher_id):
 # ========== EXAM LINK GENERATOR ======== 
 
 @teacher_dashboard_bp.route('/generate-exam-link', methods=['POST'])
-@jwt_required(optional=True)
 def generate_exam():
-
     data = request.get_json()
 
     # 🔐 JWT OPTIONAL
-    teacher_id = None
-
+    teacher_id = 1
     try:
         verify_jwt_in_request()
         claims = get_jwt()
 
         if claims.get("role") == "teacher":
             teacher_id = int(get_jwt_identity())
-
     except:
         pass
 
@@ -224,7 +238,6 @@ def generate_exam():
     if not class_id or not subject or not exam_time_str:
         return jsonify({"error": "Missing fields"}), 400
 
-    # 🕒 DATE FORMAT
     try:
         exam_time = datetime.fromisoformat(exam_time_str)
     except:
@@ -241,7 +254,7 @@ def generate_exam():
         return jsonify({"error": "Exam already scheduled"}), 400
 
     # 🔥 GENERATE LINK
-    link = generate_meeting_link(class_id, prefix="exam")
+    link = generate_meeting_link(data['class_id'], prefix="exam")
 
     # 💾 SAVE
     exam = ExamLink(
@@ -256,7 +269,7 @@ def generate_exam():
     db.session.commit()
 
     return jsonify({
-        "message": "Exam link generated successfully",
+        "message": "Exam link generated",
         "link": link
     }), 201
 
@@ -265,7 +278,7 @@ def generate_exam():
 @teacher_dashboard_bp.route('/my-exams', methods=['GET'])
 def get_my_exams():
 
-    teacher_id = None  
+    teacher_id = 1  
 
     try:
         verify_jwt_in_request()
@@ -277,7 +290,7 @@ def get_my_exams():
             return jsonify({"error": "Only teachers allowed"}), 403
 
     except Exception:
-        teacher_id = 1  # no token → testing mode
+        pass  # no token → testing mode
 
     exams = ExamLink.query.filter_by(teacher_id=teacher_id)\
         .order_by(ExamLink.exam_time.desc()).all()
@@ -385,79 +398,65 @@ def get_notices():
     claims = get_jwt()
     role = claims.get("role")
 
-    # 🔥 normalize role
+    # normalize role
     if role == "staff":
         role = "teacher"
 
-    # 🔥 visibility logic
-    def is_visible(target, role):
-        if target == "all":
-            return True
+    if role != "teacher":
+        return jsonify({
+            "error": "Only teachers allowed"
+        }), 403
 
-        if role == "teacher":
-            return target in ["admin", "student"]
+    user_id = get_jwt_identity()
 
-        if role == "student":
-            return target in ["student", "all"]
+    # logged in teacher
+    teacher = Teacher.query.filter_by(user_id=user_id).first()
 
-        return False
+    if not teacher:
+        return jsonify({
+            "error": "Teacher not found"
+        }), 404
 
-    notices = Notice.query.order_by(Notice.created_at.desc()).all()
+    # ===== FETCH NOTICES =====
 
-    # ================= DUMMY DATA =================
+    notices = Notice.query.filter(
+        (Notice.target == "all") |
+        (
+            (Notice.target == "teacher") &
+            (Notice.teacher_id == teacher.id)
+        )
+    ).order_by(Notice.created_at.desc()).all()
+
+    # ===== DUMMY DATA =====
+
     if not notices:
-        dummy_data = [
+
+        return jsonify([
             {
                 "id": 1,
-                "title": "Welcome to GRT",
-                "message": "This is your ERP Software for school",
-                "target": "all",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
-            },
-            {
-                "id": 2,
-                "title": "Holiday Notice",
-                "message": "School closed on Sunday.",
-                "target": "student",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
-            },
-            {
-                "id": 3,
-                "title": "Admin Announcement",
-                "message": "New rules applied from next week.",
-                "target": "admin",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
-            },
-            {
-                "id": 4,
-                "title": "Teacher Meeting",
-                "message": "Meeting at 10 AM.",
-                "target": "teacher",
+                "title": "No Notices",
+                "message": "No notices available right now.",
+                "attachment": None,
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
             }
-        ]
+        ])
 
-        filtered_dummy = [
-            n for n in dummy_data if is_visible(n["target"], role)
-        ]
+    # ===== RESPONSE =====
 
-        return jsonify(filtered_dummy), 200
-
-    # ================= REAL DATA =================
     filtered = []
 
     for n in notices:
-        if is_visible(n.target, role):
-            filtered.append({
-                "id": n.id,
-                "title": n.title,
-                "message": n.message,
-                "target": n.target,
-                "created_at": n.created_at.strftime("%Y-%m-%d %H:%M")
-            })
+
+        filtered.append({
+            "id": n.id,
+            "title": n.title,
+            "message": n.message,
+            "target": n.target,
+            "attachment": n.attachment,
+            "created_at": n.created_at.strftime("%Y-%m-%d %H:%M")
+        })
 
     return jsonify(filtered), 200
-
 
 # ======== issue view by student =====
 
