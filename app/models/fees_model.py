@@ -27,3 +27,10 @@ class FeeRecord(db.Model):
         'Student',
         backref='fee_records'
     )
+
+    payment_screenshot = db.Column(db.String(500), nullable=True)
+
+    approval_status = db.Column(
+        db.String(20),
+        default="Pending"
+    )
