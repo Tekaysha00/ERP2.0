@@ -10,6 +10,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.models.payment_model import Payment
 from app.models.student_model import Student
 from app.models.raise_issue import Issue
+from app.models.fees_model import FeeRecord
 import os
 from app.models.exam_link import ExamLink
 from flask import jsonify
@@ -302,83 +303,141 @@ def attendance_overview():
 def salary_overview():
 
     claims = get_jwt()
+
+    # 🔐 ADMIN ONLY
     if claims.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
+        return jsonify({
+            "error": "Admin only"
+        }), 403
 
     current_month = datetime.now().month
-    current_year  = datetime.now().year
+    current_year = datetime.now().year
 
-    # ─────────────────────────────────────────────
-    # 🧪 DUMMY DATA (ONLY IF DB EMPTY)
-    # ─────────────────────────────────────────────
+    # =====================================================
+    # 📊 CURRENT MONTH SALARY RECORDS
+    # =====================================================
 
-    existing = db.session.query(Salary.id).first()
+    salary_records = db.session.query(Salary).filter(
+        Salary.month == current_month,
+        Salary.year == current_year
+    ).all()
 
-    if not existing:
-        # 👨‍🏫 Teachers
-        teachers = [
-            Teacher(fullName="Abijit CID"),
-            Teacher(fullName="ACP Praddyuman"),
-            Teacher(fullName="Daya Bhosle"),
-            Teacher(fullName="Sunil Tope"),
-            Teacher(fullName="Dilip Laude"),
-            Teacher(fullName="Satish Muthmare")
-        ]
+    total_salary_records = len(salary_records)
 
-        db.session.add_all(teachers)
-        db.session.commit()
+    # =====================================================
+    # ✅ PAID COUNT
+    # =====================================================
 
-        salaries = [
-            Salary(teacher_id=teachers[0].id, amount=10000, status='paid', month=current_month, year=current_year),
-            Salary(teacher_id=teachers[1].id, amount=0, status='unpaid', month=current_month, year=current_year),
-            Salary(teacher_id=teachers[2].id, amount=0, status='unpaid', month=current_month, year=current_year),
-            Salary(teacher_id=teachers[3].id, amount=12000, status='paid', month=current_month, year=current_year),
-            Salary(teacher_id=teachers[4].id, amount=0, status='unpaid', month=current_month, year=current_year),
-            Salary(teacher_id=teachers[5].id, amount=0, status='unpaid', month=current_month, year=current_year),
-        ]
-
-        db.session.add_all(salaries)
-        db.session.commit()
-
-    
-    total_salary_records = db.session.query(func.count(Salary.id)).scalar() or 0
-
-    paid_count = db.session.query(func.count(Salary.id)).filter(
-        Salary.status == 'paid'
+    paid_count = db.session.query(
+        func.count(Salary.id)
+    ).filter(
+        Salary.status == 'paid',
+        Salary.month == current_month,
+        Salary.year == current_year
     ).scalar() or 0
 
-    unpaid_count = db.session.query(func.count(Salary.id)).filter(
-        Salary.status == 'unpaid'
+    # =====================================================
+    # ❌ UNPAID COUNT
+    # =====================================================
+
+    unpaid_count = db.session.query(
+        func.count(Salary.id)
+    ).filter(
+        Salary.status == 'unpaid',
+        Salary.month == current_month,
+        Salary.year == current_year
     ).scalar() or 0
 
-    paid_percent   = round((paid_count   / total_salary_records * 100), 1) if total_salary_records else 0
-    unpaid_percent = round((unpaid_count / total_salary_records * 100), 1) if total_salary_records else 0
+    # =====================================================
+    # 📈 PERCENTAGES
+    # =====================================================
 
-    # ─── Unpaid Teachers ──────────────────────────────────────────
+    paid_percent = round(
+        (paid_count / total_salary_records) * 100,
+        1
+    ) if total_salary_records > 0 else 0
+
+    unpaid_percent = round(
+        (unpaid_count / total_salary_records) * 100,
+        1
+    ) if total_salary_records > 0 else 0
+
+    # =====================================================
+    # 👨‍🏫 UNPAID TEACHERS
+    # =====================================================
+
     unpaid_records = (
         db.session.query(
             Teacher.id,
-            Teacher.fullName
+            Teacher.fullName,
+            Salary.amount
         )
-        .join(Salary, Salary.teacher_id == Teacher.id)
-        .filter(Salary.status == 'unpaid')
+        .join(
+            Salary,
+            Salary.teacher_id == Teacher.id
+        )
+        .filter(
+            Salary.status == 'unpaid',
+            Salary.month == current_month,
+            Salary.year == current_year
+        )
         .distinct()
         .all()
     )
 
-    unpaid_teachers = [
-        {
+    unpaid_teachers = []
+
+    for teacher_id, full_name, amount in unpaid_records:
+
+        unpaid_teachers.append({
             "id": teacher_id,
-            "name": full_name
-        }
-        for teacher_id, full_name in unpaid_records
-    ]
+            "name": full_name,
+            "amount": amount
+        })
+
+    # =====================================================
+    # 💰 TOTAL PAID & UNPAID AMOUNT
+    # =====================================================
+
+    total_paid_amount = db.session.query(
+        func.sum(Salary.amount)
+    ).filter(
+        Salary.status == 'paid',
+        Salary.month == current_month,
+        Salary.year == current_year
+    ).scalar() or 0
+
+    total_unpaid_amount = db.session.query(
+        func.sum(Salary.amount)
+    ).filter(
+        Salary.status == 'unpaid',
+        Salary.month == current_month,
+        Salary.year == current_year
+    ).scalar() or 0
+
+    # =====================================================
+    # 🚀 RESPONSE
+    # =====================================================
 
     return jsonify({
+        "success": True,
+
+        "current_month": current_month,
+        "current_year": current_year,
+
+        "total_salary_records": total_salary_records,
+
+        "paid_count": paid_count,
+        "unpaid_count": unpaid_count,
+
         "paid_percent": paid_percent,
         "unpaid_percent": unpaid_percent,
+
+        "total_paid_amount": float(total_paid_amount),
+        "total_unpaid_amount": float(total_unpaid_amount),
+
         "unpaid_teachers": unpaid_teachers
-    })
+    }), 200
 
 
 
@@ -417,14 +476,13 @@ def get_all_live_classes():
         })
 
     return jsonify({
-        "total": len(result),
-        "live_classes": result
+        "data": result
     }), 200
 
 
 # =========== VIEW ALL EXAM LINK ======= 
 
-@dashboard_bp.route('/all-exams', methods=['GET'])
+@dashboard_bp.route('/exam-links', methods=['GET'])
 @jwt_required()
 def get_all_exams():
 
@@ -454,7 +512,7 @@ def get_all_exams():
 
 # ======== VIEW - NOTICE JST FOR CHECK WITH DUMMY ===== =
 
-@dashboard_bp.route('/notices', methods=['GET'])
+'''@dashboard_bp.route('/notices', methods=['GET'])
 @jwt_required()
 def admin_get_notices():
 
@@ -498,7 +556,7 @@ def admin_get_notices():
         "total_notices": len(notices),
         "data": notices
     }), 200
-
+'''
 
 
 # ============= FEE ANALYTICS ================ 
@@ -508,50 +566,24 @@ def admin_get_notices():
 def fee_analytics():
 
     claims = get_jwt()
+
+    # 🔐 ADMIN ONLY
     if claims.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
+        return jsonify({
+            "error": "Admin only"
+        }), 403
 
-# ======= DUMMY DAATA ======
-    if Payment.query.count() == 0:
+    # =====================================================
+    # 🎯 FILTERS
+    # =====================================================
 
-        # Students create
-        s1 = Student(FullName="Modi-ur-Rehman", classname="Bidaya")
-        s2 = Student(FullName="Oggy Adityanath", classname="Uoola")
-        s3 = Student(FullName="Sharjeel Imam", classname="Uliya")
-        s4 = Student(FullName="Umar Khalid", classname="Bidaya")
-
-        db.session.add_all([s1, s2, s3, s4])
-        db.session.commit()
-
-        # April (All Paid)
-        payments = [
-            Payment(student_id=s1.id, amount=15000, status="paid", month="April", timestamp=datetime.now()),
-            Payment(student_id=s2.id, amount=11000, status="paid", month="April", timestamp=datetime.now()),
-            Payment(student_id=s3.id, amount=13000, status="paid", month="April", timestamp=datetime.now()),
-            Payment(student_id=s4.id, amount=15000, status="paid", month="April", timestamp=datetime.now()),
-
-            # May (Mixed)
-            Payment(student_id=s1.id, amount=15000, status="unpaid", month="May"),
-            Payment(student_id=s2.id, amount=11000, status="unpaid", month="May"),
-            Payment(student_id=s3.id, amount=13000, status="paid", month="May", timestamp=datetime.now()),
-            Payment(student_id=s4.id, amount=15000, status="unpaid", month="May"),
-        ]
-
-        db.session.add_all(payments)
-        db.session.commit()
-
-        print("Dummy data inserted")
-
-    # =========================
-    # FILTERS
-    # =========================
-    status = request.args.get('status', 'paid').lower()
+    status = request.args.get('status', '').lower()
     month = request.args.get('month')
-    
 
-    # =========================
-    # 1. TABLE DATA
-    # =========================
+    # =====================================================
+    # 📊 MAIN QUERY
+    # =====================================================
+
     query = db.session.query(
         Payment.id,
         Student.FullName.label('student_name'),
@@ -560,145 +592,356 @@ def fee_analytics():
         Payment.amount,
         Payment.status,
         Payment.month
-    ).join(Student, Student.id == Payment.student_id)
+    ).join(
+        Student,
+        Student.id == Payment.student_id
+    )
+
+    # =====================================================
+    # ✅ STATUS FILTER
+    # =====================================================
 
     if status in ['paid', 'unpaid']:
-        query = query.filter(Payment.status == status)
+        query = query.filter(
+            func.lower(Payment.status) == status
+        )
+
+    # =====================================================
+    # 📅 MONTH FILTER
+    # =====================================================
 
     if month:
-        query = query.filter(func.lower(Payment.month) == month.lower())
+        query = query.filter(
+            func.lower(Payment.month) == month.lower()
+        )
 
+    # =====================================================
+    # 📥 FETCH RECORDS
+    # =====================================================
 
-    records = query.order_by(Payment.id.desc()).all()
+    records = query.order_by(
+        Payment.timestamp.desc()
+    ).all()
+
+    # =====================================================
+    # 📋 TABLE DATA
+    # =====================================================
 
     table_data = []
     total_amount = 0
 
     for row in records:
-        total_amount += float(row.amount or 0)
+
+        amount = float(row.amount or 0)
+
+        total_amount += amount
 
         table_data.append({
+            "id": row.id,
             "student_name": row.student_name,
             "class": row.class_name,
             "time": row.timestamp.strftime("%I:%M %p") if row.timestamp else "-",
-            "amount": row.amount,
+            "amount": amount,
             "status": row.status.capitalize(),
             "month": row.month
         })
 
-   
-    # ======= MONTHLY SUMMARY
+    # =====================================================
+    # 📈 MONTHLY SUMMARY
+    # =====================================================
 
     summary_query = db.session.query(
+
         Payment.month,
-        func.sum(Payment.amount).label('total_amount'),
-        func.sum(case((Payment.status == 'paid', Payment.amount), else_=0)).label('paid_amount'),
-        func.sum(case((Payment.status == 'unpaid', Payment.amount), else_=0)).label('unpaid_amount'),
-        func.count(Payment.id).label('total_students'),
-        func.sum(case((Payment.status == 'paid', 1), else_=0)).label('paid_count'),
-        func.sum(case((Payment.status == 'unpaid', 1), else_=0)).label('unpaid_count')
-    ).group_by(Payment.month)
+
+        func.sum(
+            Payment.amount
+        ).label('total_amount'),
+
+        func.sum(
+            case(
+                (Payment.status == 'paid', Payment.amount),
+                else_=0
+            )
+        ).label('paid_amount'),
+
+        func.sum(
+            case(
+                (Payment.status == 'unpaid', Payment.amount),
+                else_=0
+            )
+        ).label('unpaid_amount'),
+
+        func.count(
+            Payment.id
+        ).label('total_students'),
+
+        func.sum(
+            case(
+                (Payment.status == 'paid', 1),
+                else_=0
+            )
+        ).label('paid_count'),
+
+        func.sum(
+            case(
+                (Payment.status == 'unpaid', 1),
+                else_=0
+            )
+        ).label('unpaid_count')
+
+    ).group_by(
+        Payment.month
+    )
 
     summary_records = summary_query.all()
 
     monthly_summary = []
+
     for row in summary_records:
+
         monthly_summary.append({
+
             "month": row.month,
-            "total_amount": float(row.total_amount or 0),
-            "paid_amount": float(row.paid_amount or 0),
-            "unpaid_amount": float(row.unpaid_amount or 0),
-            "total_students": int(row.total_students or 0),
-            "paid_count": int(row.paid_count or 0),
-            "unpaid_count": int(row.unpaid_count or 0)
+
+            "total_amount": float(
+                row.total_amount or 0
+            ),
+
+            "paid_amount": float(
+                row.paid_amount or 0
+            ),
+
+            "unpaid_amount": float(
+                row.unpaid_amount or 0
+            ),
+
+            "total_students": int(
+                row.total_students or 0
+            ),
+
+            "paid_count": int(
+                row.paid_count or 0
+            ),
+
+            "unpaid_count": int(
+                row.unpaid_count or 0
+            )
         })
 
-    
-    # ======== MONTH DETAILS
+    # =====================================================
+    # 👨‍🎓 MONTH DETAILS
+    # =====================================================
+
     paid_students = []
     unpaid_students = []
 
     if month:
+
+        # ✅ PAID
         paid_q = db.session.query(
             Student.FullName,
             Student.classname,
             Payment.amount,
             Payment.timestamp
-        ).join(Student).filter(
+        ).join(
+            Student
+        ).filter(
             func.lower(Payment.month) == month.lower(),
             Payment.status == 'paid'
         )
 
+        # ❌ UNPAID
         unpaid_q = db.session.query(
             Student.FullName,
             Student.classname,
             Payment.amount
-        ).join(Student).filter(
+        ).join(
+            Student
+        ).filter(
             func.lower(Payment.month) == month.lower(),
             Payment.status == 'unpaid'
         )
 
+        # =========================
+        # PAID STUDENTS
+        # =========================
+
         for row in paid_q.all():
+
             paid_students.append({
                 "student_name": row.FullName,
                 "class": row.classname,
-                "amount": row.amount,
+                "amount": float(row.amount or 0),
                 "time": row.timestamp.strftime("%I:%M %p") if row.timestamp else "-"
             })
 
+        # =========================
+        # UNPAID STUDENTS
+        # =========================
+
         for row in unpaid_q.all():
+
             unpaid_students.append({
                 "student_name": row.FullName,
                 "class": row.classname,
-                "amount": row.amount
+                "amount": float(row.amount or 0)
             })
 
+    # =====================================================
+    # 🚀 FINAL RESPONSE
+    # =====================================================
+
     return jsonify({
+
         "success": True,
 
-        # table
+        # 📋 TABLE
         "table_data": table_data,
+
+        # 💰 TOTAL
         "total_amount": total_amount,
 
-        # filters
+        # 🎯 FILTERS
         "selected_status": status,
         "selected_month": month,
 
-        # summary
+        # 📈 SUMMARY
         "monthly_summary": monthly_summary,
 
-        # details
+        # 👨‍🎓 DETAILS
         "month_detail": {
             "paid_students": paid_students,
             "unpaid_students": unpaid_students
         }
+
     }), 200
 
 
 
 # ========= APPROVAL API ======= 
-uploaded_students = [
-    {"id": 1, "student_name": "Alvina Firdos"},
-    {"id": 2, "student_name": "Shagufta Sakahawat"},
-    {"id": 3, "student_name": "Oniba Naaz"},
-    {"id": 4, "student_name": "Sayma Naaz"},
-    {"id": 5, "student_name": "Maryam G"},
-]
-
-
 @dashboard_bp.route('/approvals', methods=['GET'])
 @jwt_required()
 def get_uploaded_students():
 
     claims = get_jwt()
+
     if claims.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
-    
+        return jsonify({
+            "error": "Admin only"
+        }), 403
+
+    # =====================================================
+    # FETCH PENDING APPROVALS
+    # =====================================================
+
+    records = db.session.query(
+        FeeRecord,
+        Student
+    ).join(
+        Student,
+        Student.id == FeeRecord.student_id
+    ).filter(
+        FeeRecord.payment_screenshot != None,
+        FeeRecord.approval_status == "Pending"
+    ).order_by(
+        FeeRecord.created_at.desc()
+    ).all()
+
+    data = []
+
+    for fee, student in records:
+
+        data.append({
+
+            "id": fee.id,
+
+            "student_name": student.FullName,
+
+            "month": fee.month,
+
+            "amount": fee.total_amount,
+
+            "status": fee.payment_status,
+
+            "approval_status": fee.approval_status,
+
+            "file_url": fee.payment_screenshot
+        })
+
     return jsonify({
         "success": True,
-        "message": "Students who uploaded payment screenshot",
-        "data": uploaded_students
-    })
+        "total": len(data),
+        "data": data
+    }), 200
+
+# ========= approvals ========
+@dashboard_bp.route(
+    '/approvals/<int:fee_id>',
+    methods=['POST']
+)
+@jwt_required()
+def handle_approval(fee_id):
+
+    claims = get_jwt()
+
+    if claims.get("role") != "admin":
+        return jsonify({
+            "error": "Admin only"
+        }), 403
+
+    data = request.get_json()
+
+    action = data.get("action")
+
+    fee_record = FeeRecord.query.get(fee_id)
+
+    if not fee_record:
+        return jsonify({
+            "error": "Fee record not found"
+        }), 404
+
+    # =====================================================
+    # ACCEPT
+    # =====================================================
+
+    if action == "accept":
+
+        fee_record.approval_status = "Accepted"
+
+        fee_record.payment_status = "Paid"
+
+        fee_record.payment_date = datetime.utcnow()
+
+    # =====================================================
+    # DECLINE
+    # =====================================================
+
+    elif action == "decline":
+
+        fee_record.approval_status = "Declined"
+
+        fee_record.payment_status = "Unpaid"
+
+    else:
+
+        return jsonify({
+            "error": "Invalid action"
+        }), 400
+
+    db.session.commit()
+
+    return jsonify({
+
+        "success": True,
+
+        "message": f"Payment {action}ed successfully",
+
+        "payment_status": fee_record.payment_status,
+
+        "approval_status": fee_record.approval_status
+
+    }), 200
 
 
 # ====== view student issue ==== 
