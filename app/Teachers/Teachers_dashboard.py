@@ -73,7 +73,7 @@ def create_live_class():
     claims = get_jwt()
 
     # 🔐 ONLY TEACHER
-    if claims.get("role") != "teacher":
+    if claims.get("role") not in ["teacher", "staff"]:
         return jsonify({
             "error": "Only teachers can create live classes"
         }), 403
