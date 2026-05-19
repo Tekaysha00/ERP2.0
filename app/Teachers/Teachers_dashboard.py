@@ -334,59 +334,59 @@ def get_my_exams():
 
 # =========== live class links ===========
 @teacher_dashboard_bp.route('/my-live-classes', methods=['GET'])
+@jwt_required()
 def get_my_live_classes():
 
-    teacher_id = 1  # 🧪 default testing
+    claims = get_jwt()
 
-    try:
-        verify_jwt_in_request()
-        claims = get_jwt()
+    # 🔐 ONLY TEACHER / STAFF
+    if claims.get("role") not in ["teacher", "staff"]:
 
-        if claims.get("role") in ["teacher", "staff"]:
-            teacher_id = claims.get("teacher_id") or int(get_jwt_identity())
-        else:
-            return jsonify({"error": "Only teachers allowed"}), 403
+        return jsonify({
+            "error": "Only teachers allowed"
+        }), 403
 
-    except Exception:
-        pass  # no token → testing
+    teacher_id = claims.get("teacher_id")
 
-    classes = LiveClass.query.filter_by(teacher_id=teacher_id)\
-        .order_by(LiveClass.start_time.desc()).all()
+    if not teacher_id:
 
-    # 🔥 fallback to default teacher
-    if not classes and teacher_id != 1:
-        classes = LiveClass.query.filter_by(teacher_id=1)\
-            .order_by(LiveClass.start_time.desc()).all()
+        return jsonify({
+            "error": "Teacher ID missing"
+        }), 400
 
-    # 🔥 dummy data fallback
-    if not classes:
-        return jsonify([
-            {
-                "id": 1,
-                "class_id": "10",
-                "subject": "English",
-                "link": "https://dummy-live-class.com",
-                "time": "2026-01-09 09:00"
-            },
-            {
-                "id": 2,
-                "class_id": "8",
-                "subject": "History",
-                "link": "https://dummy-live-class2.com",
-                "time": "2026-01-08 08:30"
-            }
-        ]), 200
+    # =====================================================
+    # FETCH CLASSES
+    # =====================================================
 
-    return jsonify([
-        {
+    classes = LiveClass.query.filter_by(
+        teacher_id=teacher_id
+    ).order_by(
+        LiveClass.start_time.desc()
+    ).all()
+
+    result = []
+
+    for c in classes:
+
+        result.append({
+
             "id": c.id,
+
             "class_id": c.class_id,
+
             "subject": c.subject,
+
             "link": c.meeting_link,
-            "time": c.start_time.strftime("%Y-%m-%d %H:%M")
-        }
-        for c in classes
-    ]), 200
+
+            "time": c.start_time.strftime(
+                "%Y-%m-%d %H:%M"
+            )
+        })
+
+    return jsonify({
+        "success": True,
+        "data": result
+    }), 200
 
 
 # ======= notice - check for teacherr ===
