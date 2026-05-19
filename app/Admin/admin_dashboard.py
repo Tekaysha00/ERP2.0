@@ -12,72 +12,107 @@ from app.models.student_model import Student
 from app.models.raise_issue import Issue
 import os
 from app.models.exam_link import ExamLink
-
+from flask import jsonify
+from flask_jwt_extended import jwt_required, get_jwt
+from sqlalchemy import func, case
+from datetime import datetime, timedelta
 
 
 
 dashboard_bp = Blueprint('admin_main', __name__, url_prefix='/api/admin/dashboard')
 
-# ========= TOTAL ENROLLED ===============
+
+
+# =========================================================
+# TOTAL ENROLLED (OPTIMIZED)
+# =========================================================
+
 @dashboard_bp.route('/total-enrolled', methods=['GET'])
 @jwt_required()
 def total_enrolled():
 
     claims = get_jwt()
+
     if claims.get("role") != "admin":
         return jsonify({"error": "Admin only"}), 403
 
+    current_year = datetime.now().year
     current_month = datetime.now().month
-    current_year  = datetime.now().year
 
-    # ─── Total Enrolled ───────────────────────────────────────────
-    total_students = db.session.query(func.count(Student.id)).scalar() or 0
-    total_teachers = db.session.query(func.count(Teacher.id)).scalar() or 0
+    months = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ]
 
-    if total_students == 0 and total_teachers == 0:
-        return jsonify({
-            "total_students": 120,
-            "total_teachers": 15,
-            "new_students_this_month": 25,
-            "new_teachers_this_month": 3,
-            "analytics": {
-                "months": ["Jan","Feb","Mar","Apr","May","Jun",
-                           "Jul","Aug","Sep","Oct","Nov","Dec"],
-                "students": [5, 10, 15, 20, 18, 25, 30, 28, 35, 40, 38, 45],
-                "teachers": [1, 2, 1, 3, 2, 4, 3, 5, 4, 6, 5, 7]
-            }
-        })
+    # ================= TOTAL COUNTS =================
 
-    new_students = db.session.query(func.count(Student.id)).filter(
+    total_students = db.session.query(
+        func.count(Student.id)
+    ).scalar() or 0
+
+    total_teachers = db.session.query(
+        func.count(Teacher.id)
+    ).scalar() or 0
+
+    # ================= CURRENT MONTH =================
+
+    new_students = db.session.query(
+        func.count(Student.id)
+    ).filter(
         func.extract('month', Student.registration_date) == current_month,
-        func.extract('year',  Student.registration_date) == current_year
+        func.extract('year', Student.registration_date) == current_year
     ).scalar() or 0
 
-    new_teachers = db.session.query(func.count(Teacher.id)).filter(
+    new_teachers = db.session.query(
+        func.count(Teacher.id)
+    ).filter(
         func.extract('month', Teacher.created_at) == current_month,
-        func.extract('year',  Teacher.created_at)  == current_year
+        func.extract('year', Teacher.created_at) == current_year
     ).scalar() or 0
 
-    # ─── Analytics – month-wise enrollment (current year) ─────────
-    months = ["Jan","Feb","Mar","Apr","May","Jun",
-              "Jul","Aug","Sep","Oct","Nov","Dec"]
+    # ================= STUDENT MONTHLY =================
 
-    student_monthly = []
-    teacher_monthly = []
+    student_data = db.session.query(
+        func.extract('month', Student.registration_date).label('month'),
+        func.count(Student.id).label('count')
+    ).filter(
+        func.extract('year', Student.registration_date) == current_year
+    ).group_by(
+        func.extract('month', Student.registration_date)
+    ).all()
 
-    for m in range(1, 13):
-        s_count = db.session.query(func.count(Student.id)).filter(
-            func.extract('month', Student.registration_date) == m,
-            func.extract('year',  Student.registration_date) == current_year
-        ).scalar() or 0
+    # ================= TEACHER MONTHLY =================
 
-        t_count = db.session.query(func.count(Teacher.id)).filter(
-            func.extract('month', Teacher.created_at) == m,
-            func.extract('year',  Teacher.created_at)  == current_year
-        ).scalar() or 0
+    teacher_data = db.session.query(
+        func.extract('month', Teacher.created_at).label('month'),
+        func.count(Teacher.id).label('count')
+    ).filter(
+        func.extract('year', Teacher.created_at) == current_year
+    ).group_by(
+        func.extract('month', Teacher.created_at)
+    ).all()
 
-        student_monthly.append(s_count)
-        teacher_monthly.append(t_count)
+    # ================= MAP =================
+
+    student_map = {
+        int(row.month): row.count
+        for row in student_data
+    }
+
+    teacher_map = {
+        int(row.month): row.count
+        for row in teacher_data
+    }
+
+    student_monthly = [
+        student_map.get(i, 0)
+        for i in range(1, 13)
+    ]
+
+    teacher_monthly = [
+        teacher_map.get(i, 0)
+        for i in range(1, 13)
+    ]
 
     return jsonify({
         "total_students": total_students,
@@ -88,6 +123,174 @@ def total_enrolled():
             "months": months,
             "students": student_monthly,
             "teachers": teacher_monthly
+        }
+    })
+
+
+# =========================================================
+# ATTENDANCE OVERVIEW (FULLY OPTIMIZED)
+# =========================================================
+
+@dashboard_bp.route('/attendance-overview', methods=['GET'])
+@jwt_required()
+def attendance_overview():
+
+    claims = get_jwt()
+
+    if claims.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+
+    today = datetime.today()
+
+    # Sunday start
+    start_of_week = today - timedelta(
+        days=today.weekday() + 1 if today.weekday() != 6 else 0
+    )
+
+    days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+    # =====================================================
+    # STUDENT ATTENDANCE
+    # =====================================================
+
+    student_rows = db.session.query(
+        func.date(S_attendance.date).label("day"),
+        func.count(S_attendance.id).label("total"),
+        func.sum(
+            case(
+                (S_attendance.status == 'present', 1),
+                else_=0
+            )
+        ).label("present")
+    ).filter(
+        S_attendance.date >= start_of_week.date()
+    ).group_by(
+        func.date(S_attendance.date)
+    ).all()
+
+    student_map = {
+        str(row.day): {
+            "total": row.total,
+            "present": int(row.present or 0)
+        }
+        for row in student_rows
+    }
+
+    # =====================================================
+    # TEACHER ATTENDANCE
+    # =====================================================
+
+    teacher_rows = db.session.query(
+        func.date(TeacherAttendance.attendance_date).label("day"),
+        func.count(TeacherAttendance.id).label("total"),
+        func.sum(
+            case(
+                (TeacherAttendance.status == 'present', 1),
+                else_=0
+            )
+        ).label("present")
+    ).filter(
+        TeacherAttendance.attendance_date >= start_of_week.date()
+    ).group_by(
+        func.date(TeacherAttendance.attendance_date)
+    ).all()
+
+    teacher_map = {
+        str(row.day): {
+            "total": row.total,
+            "present": int(row.present or 0)
+        }
+        for row in teacher_rows
+    }
+
+    # =====================================================
+    # CALCULATE WEEKLY %
+    # =====================================================
+
+    s_weekly = []
+    t_weekly = []
+
+    s_total_present = 0
+    s_total_records = 0
+
+    t_total_present = 0
+    t_total_records = 0
+
+    for i in range(7):
+
+        current_day = (
+            start_of_week + timedelta(days=i)
+        ).date()
+
+        # ================= STUDENT =================
+
+        s_data = student_map.get(str(current_day), {
+            "total": 0,
+            "present": 0
+        })
+
+        s_total = s_data["total"]
+        s_present = s_data["present"]
+
+        s_percent = round(
+            (s_present / s_total * 100), 1
+        ) if s_total > 0 else 0
+
+        s_weekly.append(s_percent)
+
+        s_total_present += s_present
+        s_total_records += s_total
+
+        # ================= TEACHER =================
+
+        t_data = teacher_map.get(str(current_day), {
+            "total": 0,
+            "present": 0
+        })
+
+        t_total = t_data["total"]
+        t_present = t_data["present"]
+
+        t_percent = round(
+            (t_present / t_total * 100), 1
+        ) if t_total > 0 else 0
+
+        t_weekly.append(t_percent)
+
+        t_total_present += t_present
+        t_total_records += t_total
+
+    # =====================================================
+    # OVERALL %
+    # =====================================================
+
+    s_overall_present = round(
+        (s_total_present / s_total_records * 100), 1
+    ) if s_total_records > 0 else 0
+
+    s_overall_absent = round(
+        100 - s_overall_present, 1
+    )
+
+    t_overall_present = round(
+        (t_total_present / t_total_records * 100), 1
+    ) if t_total_records > 0 else 0
+
+    t_overall_absent = round(
+        100 - t_overall_present, 1
+    )
+
+    return jsonify({
+        "days": days,
+        "students": {
+            "present_percent": s_overall_present,
+            "absent_percent": s_overall_absent,
+            "weekly": s_weekly
+        },
+        "teachers": {
+            "present_percent": t_overall_present,
+            "absent_percent": t_overall_absent,
+            "weekly": t_weekly
         }
     })
 
@@ -175,118 +378,6 @@ def salary_overview():
         "paid_percent": paid_percent,
         "unpaid_percent": unpaid_percent,
         "unpaid_teachers": unpaid_teachers
-    })
-
-
-
-# =============== ATTENDANCE-OVERVIEW ==========
-@dashboard_bp.route('/attendance-overview', methods=['GET'])
-@jwt_required()
-def attendance_overview():
-
-    claims = get_jwt()
-
-    if claims.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
-
-    from datetime import datetime, timedelta
-
-    today = datetime.today()
-
-    # Sunday se week start
-    start_of_week = today - timedelta(
-        days=today.weekday() + 1 if today.weekday() != 6 else 0
-    )
-
-    days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
-    # ================= STUDENT =================
-    def student_attendance():
-
-        weekly = []
-        total_present = 0
-        total_records = 0
-
-        for i in range(7):
-
-            day = start_of_week + timedelta(days=i)
-
-            total = db.session.query(func.count(S_attendance.id)).filter(
-                func.date(S_attendance.date) == day.date()
-            ).scalar() or 0
-
-            present = db.session.query(func.count(S_attendance.id)).filter(
-                S_attendance.status == 'present',
-                func.date(S_attendance.date) == day.date()
-            ).scalar() or 0
-
-            # divide by zero avoid
-            percent = round((present / total * 100), 1) if total > 0 else 0
-
-            weekly.append(percent)
-
-            total_present += present
-            total_records += total
-
-        overall_present = round(
-            (total_present / total_records * 100), 1
-        ) if total_records > 0 else 0
-
-        overall_absent = round(100 - overall_present, 1)
-
-        return overall_present, overall_absent, weekly
-
-    # ================= TEACHER =================
-    def teacher_attendance():
-
-        weekly = []
-        total_present = 0
-        total_records = 0
-
-        for i in range(7):
-
-            day = start_of_week + timedelta(days=i)
-
-            total = db.session.query(func.count(TeacherAttendance.id)).filter(
-                func.date(TeacherAttendance.attendance_date) == day.date()
-            ).scalar() or 0
-
-            present = db.session.query(func.count(TeacherAttendance.id)).filter(
-                TeacherAttendance.status == 'present',
-                func.date(TeacherAttendance.attendance_date) == day.date()
-            ).scalar() or 0
-
-            # divide by zero avoid
-            percent = round((present / total * 100), 1) if total > 0 else 0
-
-            weekly.append(percent)
-
-            total_present += present
-            total_records += total
-
-        overall_present = round(
-            (total_present / total_records * 100), 1
-        ) if total_records > 0 else 0
-
-        overall_absent = round(100 - overall_present, 1)
-
-        return overall_present, overall_absent, weekly
-
-    s_present, s_absent, s_weekly = student_attendance()
-    t_present, t_absent, t_weekly = teacher_attendance()
-
-    return jsonify({
-        "days": days,
-        "students": {
-            "present_percent": s_present,
-            "absent_percent": s_absent,
-            "weekly": s_weekly
-        },
-        "teachers": {
-            "present_percent": t_present,
-            "absent_percent": t_absent,
-            "weekly": t_weekly
-        }
     })
 
 
