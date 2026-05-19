@@ -115,7 +115,14 @@ def create_app():
     }
 }, supports_credentials=True)
 
-    # Initialize extensions (db.init_app after config)
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_size": 10,
+    "max_overflow": 20,
+    "pool_timeout": 30,
+    "pool_recycle": 1800,
+    "pool_pre_ping": True
+}
+    
     db.init_app(app)
     migrate.init_app(app, db)
     bcrypt.init_app(app)
