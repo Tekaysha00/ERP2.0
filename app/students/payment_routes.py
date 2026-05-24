@@ -1,11 +1,15 @@
 from flask import Blueprint, request, jsonify, url_for
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt
 from app.models.fees_model import FeeRecord
 from app.models.student_model import Student
 from app import db
 import os
 from datetime import datetime
 from app.utils.helpers import format_classname
+
+# =====================================================
+# STRIPE
+# =====================================================
 
 import stripe
 
@@ -16,82 +20,148 @@ from stripe_config import (
 
 stripe.api_key = STRIPE_SECRET_KEY
 
+# =====================================================
+# RAZORPAY
+# =====================================================
 
-payment_bp = Blueprint('payment_bp', __name__, url_prefix='/api/student')
+import razorpay
 
+from razorpay_config import (
+    RAZORPAY_KEY_ID,
+    RAZORPAY_SECRET
+)
+
+razorpay_client = razorpay.Client(
+    auth=(RAZORPAY_KEY_ID, RAZORPAY_SECRET)
+)
+
+# =====================================================
+# BLUEPRINT
+# =====================================================
+
+payment_bp = Blueprint(
+    'payment_bp',
+    __name__,
+    url_prefix='/api/student'
+)
+
+# =====================================================
+# GET FEE STRUCTURE
+# =====================================================
 
 @payment_bp.route('/payment/fee-structure/<month>', methods=['GET'])
 @jwt_required()
 def get_fee_structure(month):
-    # Get current student ID from JWT
+
     claims = get_jwt()
+
     student_id = claims.get("student_id")
+
     print("JWT Claims:", claims)
     print("Looking for:", student_id, month)
 
-    student = Student.query.filter_by(id=student_id).first()
+    student = Student.query.filter_by(
+        id=student_id
+    ).first()
 
     photo_url = None
-    if student and getattr(student, "photo", None):
-        photo_url = url_for('static', filename=f'uploads/students/{student.photo}', _external=True)
 
-       
+    if student and getattr(student, "photo", None):
+
+        photo_url = url_for(
+            'static',
+            filename=f'uploads/students/{student.photo}',
+            _external=True
+        )
 
     if not student:
-        # Dummy student if no record found
+
         student_data = {
             "FullName": "Tausif Kamal",
             "email": "tausifkamal@example.com",
-            ("classname"): "Class 1",
+            "classname": "Class 1",
             "phone": "8906428140"
         }
+
     else:
+
         student_data = {
+
             "FullName": student.FullName,
+
             "photo": photo_url,
-             "rollNo": student.rollNo,
-            "classname": format_classname(student.classname),
+
+            "rollNo": student.rollNo,
+
+            "classname": format_classname(
+                student.classname
+            ),
+
             "phone": student.phone
         }
 
-    fee_record = FeeRecord.query.filter_by(student_id=student_id, month=month).first()
+    fee_record = FeeRecord.query.filter_by(
+        student_id=student_id,
+        month=month
+    ).first()
 
-    # ✅ Use dummy fee data if no fee record found
+    # =====================================================
+    # DUMMY FEE
+    # =====================================================
+
     if not fee_record:
-        print(f"No fee record found for {month}, using dummy data")
+
         fee_data = {
             "school_fee": 1200,
             "sports_fee": 300,
             "other_fee": 200,
         }
+
     else:
+
         fee_data = {
+
             "school_fee": fee_record.school_fee,
+
             "sports_fee": fee_record.sports_fee,
+
             "other_fee": fee_record.other_fee,
-            # "total_amount": fee_record.total_amount
         }
 
     total_amount = (
-        fee_data["school_fee"] + fee_data["sports_fee"] + fee_data["other_fee"]
+
+        fee_data["school_fee"] +
+
+        fee_data["sports_fee"] +
+
+        fee_data["other_fee"]
     )
 
     def format_key(key):
+
         return key.replace("_", " ").title()
-    
+
     response = {
+
         "student": student_data,
+
         "fee_structure": {
-            format_key("school_fee"): fee_data["school_fee"],   # School Fee
-            format_key("sports_fee"): fee_data["sports_fee"],   # Sports Fee
-            format_key("other_fee"): fee_data["other_fee"],     # Other Fee
+
+            format_key("school_fee"): fee_data["school_fee"],
+
+            format_key("sports_fee"): fee_data["sports_fee"],
+
+            format_key("other_fee"): fee_data["other_fee"],
+
             "Total": total_amount
         }
     }
-    print(response)
 
     return jsonify(response)
 
+# =====================================================
+# INITIATE PAYMENT
+# =====================================================
 
 @payment_bp.route('/pay-now/initiate-payment', methods=['POST'])
 @jwt_required()
@@ -102,11 +172,13 @@ def initiate_payment():
     student_id = claims.get("student_id")
 
     if not student_id:
+
         return jsonify({
             "error": "Student ID missing"
         }), 400
 
     try:
+
         student_id_int = int(student_id)
 
     except (TypeError, ValueError):
@@ -118,6 +190,7 @@ def initiate_payment():
     student = Student.query.get(student_id_int)
 
     if not student:
+
         return jsonify({
             "error": "Student not found"
         }), 404
@@ -136,6 +209,7 @@ def initiate_payment():
     screenshot = request.files.get("screenshot")
 
     if not month:
+
         return jsonify({
             "error": "Month is required"
         }), 400
@@ -150,14 +224,17 @@ def initiate_payment():
     ).first()
 
     # =====================================================
-    # CALCULATE FEES
+    # CALCULATE TOTAL
     # =====================================================
 
     if fee_record:
 
         total_amount = (
+
             fee_record.school_fee +
+
             fee_record.sports_fee +
+
             fee_record.other_fee
         )
 
@@ -192,63 +269,86 @@ def initiate_payment():
             f"/static/uploads/payments/{filename}"
         )
 
-    # =====================================================
-    # CURRENCY
-    # =====================================================
-
-    currency = (
-        "aed"
-        if payment_for == "uae"
-        else "inr"
-    )
-
     try:
 
-        # =================================================
-        # STRIPE SESSION
-        # =================================================
+        # =====================================================
+        # UAE = STRIPE
+        # =====================================================
 
-        session = stripe.checkout.Session.create(
+        if payment_for == "uae":
 
-            payment_method_types=['card'],
+            currency = "aed"
 
-            line_items=[{
+            session = stripe.checkout.Session.create(
 
-                'price_data': {
+                payment_method_types=['card'],
 
-                    'currency': currency,
+                line_items=[{
 
-                    'product_data': {
-                        'name': f'School Fee - {month}'
+                    'price_data': {
+
+                        'currency': currency,
+
+                        'product_data': {
+                            'name': f'School Fee - {month}'
+                        },
+
+                        'unit_amount': int(
+                            total_amount * 100
+                        ),
                     },
 
-                    'unit_amount': int(
-                        total_amount * 100
-                    ),
-                },
+                    'quantity': 1,
+                }],
 
-                'quantity': 1,
-            }],
+                mode='payment',
 
-            mode='payment',
+                success_url='http://localhost:3000/payment-success',
 
-            success_url='http://localhost:3000/payment-success',
+                cancel_url='http://localhost:3000/payment-cancel',
 
-            cancel_url='http://localhost:3000/payment-cancel',
+                metadata={
 
-            metadata={
+                    "student_id": student_id_int,
 
-                "student_id": student_id_int,
+                    "month": month,
 
-                "month": month,
+                    "payment_for": payment_for
+                }
+            )
 
-                "payment_for": payment_for
-            }
-        )
+            payment_gateway = "stripe"
 
-        # =================================================
-        # CREATE RECORD
-        # =================================================
+            gateway_order_id = session.id
+
+            checkout_url = session.url
+
+        # =====================================================
+        # INDIA = RAZORPAY
+        # =====================================================
+
+        else:
+
+            currency = "inr"
+
+            razorpay_order = razorpay_client.order.create({
+
+                "amount": int(total_amount * 100),
+
+                "currency": "INR",
+
+                "payment_capture": 1
+            })
+
+            payment_gateway = "razorpay"
+
+            gateway_order_id = razorpay_order["id"]
+
+            checkout_url = None
+
+        # =====================================================
+        # CREATE / UPDATE FEE RECORD
+        # =====================================================
 
         if not fee_record:
 
@@ -272,9 +372,9 @@ def initiate_payment():
 
                 payment_screenshot=screenshot_path,
 
-                stripe_session_id=session.id,
+                stripe_session_id=gateway_order_id,
 
-                payment_gateway="stripe",
+                payment_gateway=payment_gateway,
 
                 payment_for=payment_for,
 
@@ -287,19 +387,18 @@ def initiate_payment():
 
             fee_record.total_amount = total_amount
 
-            fee_record.payment_gateway = "stripe"
+            fee_record.payment_gateway = payment_gateway
 
             fee_record.payment_for = payment_for
 
             fee_record.currency = currency
 
-            fee_record.stripe_session_id = session.id
+            fee_record.stripe_session_id = gateway_order_id
 
-            # ✅ UPDATE SCREENSHOT
             if screenshot_path:
+
                 fee_record.payment_screenshot = screenshot_path
 
-            # ✅ RESET APPROVAL
             fee_record.approval_status = "Pending"
 
             fee_record.payment_status = "Pending"
@@ -310,9 +409,11 @@ def initiate_payment():
 
             "success": True,
 
-            "checkout_url": session.url,
+            "payment_gateway": payment_gateway,
 
-            "session_id": session.id,
+            "checkout_url": checkout_url,
+
+            "session_id": gateway_order_id,
 
             "amount": total_amount,
 
@@ -320,44 +421,57 @@ def initiate_payment():
 
             "screenshot": screenshot_path,
 
-            "publishable_key": STRIPE_PUBLISHABLE_KEY
+            "publishable_key": STRIPE_PUBLISHABLE_KEY,
+
+            "razorpay_key": RAZORPAY_KEY_ID
         })
 
     except Exception as e:
 
         db.session.rollback()
 
-        print("STRIPE ERROR:", e)
+        print("PAYMENT ERROR:", e)
 
         return jsonify({
             "error": str(e)
         }), 500
 
-
+# =====================================================
+# UPDATE PAYMENT STATUS
+# =====================================================
 
 @payment_bp.route('/payment-status', methods=['POST'])
 @jwt_required()
 def update_payment_status():
+
     data = request.json
 
     order_id = data.get('order_id')
-    payment_result = data.get('status')  # Success / Failed
+
+    payment_result = data.get('status')
 
     record = FeeRecord.query.filter_by(
-    stripe_session_id=order_id
-).first()
+        stripe_session_id=order_id
+    ).first()
 
     if not record:
-        return jsonify({'message': 'Order not found'}), 404
+
+        return jsonify({
+            'message': 'Order not found'
+        }), 404
 
     if payment_result == "Success":
+
         record.payment_status = "Paid"
+
         record.payment_date = datetime.now()
+
     else:
+
         record.payment_status = "Due"
 
     db.session.commit()
 
-    return jsonify({'message': 'Payment status updated successfully'})
-
-
+    return jsonify({
+        'message': 'Payment status updated successfully'
+    })
