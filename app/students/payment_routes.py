@@ -304,7 +304,8 @@ def initiate_payment():
 
                 mode='payment',
 
-                success_url='http://localhost:3000/payment-success',
+                success_url=( f"http://localhost:3000/payment-success?"
+                             f"session_id={{CHECKOUT_SESSION_ID}}"),
 
                 cancel_url='http://localhost:3000/payment-cancel',
 
