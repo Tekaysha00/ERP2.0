@@ -199,9 +199,10 @@ def initiate_payment():
     # FORM DATA
     # =====================================================
 
-    month = request.form.get("month")
+    data = request.get_json()
+    month = data.get("month")
 
-    payment_for = request.form.get(
+    payment_for = data.get(
         "payment_for",
         "india"
     )
