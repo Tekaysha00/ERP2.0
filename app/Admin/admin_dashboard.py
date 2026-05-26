@@ -310,7 +310,7 @@ def salary_overview():
             "error": "Admin only"
         }), 403
 
-    current_month = datetime.now().month
+    current_month = datetime.now().strftime("%b").lower()
     current_year = datetime.now().year
 
     # =====================================================
