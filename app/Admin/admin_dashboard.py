@@ -318,10 +318,10 @@ def salary_overview():
     current_year = datetime.now().year
 
     month_filter = (
-    (func.lower(Salary.month) == current_month_short) |
-    (func.lower(Salary.month) == current_month_full) |
-    (Salary.month == current_month_num) |
-    (Salary.month == current_month_num_2)
+        (func.lower(func.cast(Salary.month, db.String)) == current_month_short) |
+        (func.lower(func.cast(Salary.month, db.String)) == current_month_full) |
+        (func.cast(Salary.month, db.String) == current_month_num) |
+        (func.cast(Salary.month, db.String) == current_month_num_2)
     )
 
 
