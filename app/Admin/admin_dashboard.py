@@ -38,7 +38,7 @@ def total_enrolled():
         return jsonify({"error": "Admin only"}), 403
 
     current_year = datetime.now().year
-    current_month = datetime.now().strftime("%b").lower()
+    current_month = datetime.now().month
 
     months = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
