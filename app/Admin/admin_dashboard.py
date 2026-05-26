@@ -311,6 +311,10 @@ def salary_overview():
         }), 403
 
     current_month = datetime.now().strftime("%b").lower()
+    all_salary = Salary.query.all()
+    for s in all_salary:
+        print("MONTH:", s.month)
+        print("STATUS:", s.status)
     current_year = datetime.now().year
 
     # =====================================================
