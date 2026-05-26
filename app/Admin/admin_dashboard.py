@@ -467,18 +467,20 @@ def get_all_live_classes():
 
         result.append({
             "id": live.id,
-            "class_id": live.class_id,
-            "subject": live.subject,
-            "meeting_link": live.meeting_link,
-            "start_time": live.start_time.isoformat(),
-            "teacher_id": live.teacher_id,
-            "teacher_name": teacher.fullName if teacher else "Unknown"
-        })
+            "title": f"{live.subject} - Class {live.class_id}",
 
+            "link": live.meeting_link,
+            "message": (
+                f"{teacher.fullName if teacher else 'Unknown'} | "
+                f"{live.start_time.strftime('%d %b %Y %I:%M %p')}"
+            )
+        })
+    
     return jsonify({
+        "success": True,
         "data": result
     }), 200
-
+           
 
 # =========== VIEW ALL EXAM LINK ======= 
 
@@ -869,7 +871,7 @@ def get_uploaded_students():
             "file_url": fee.payment_screenshot
         })
 
-    return jsonify({
+    return jsonify({        
         "success": True,
         "total": len(data),
         "data": data
