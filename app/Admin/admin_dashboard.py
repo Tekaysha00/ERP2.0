@@ -318,7 +318,7 @@ def salary_overview():
     # =====================================================
 
     salary_records = db.session.query(Salary).filter(
-        Salary.month == current_month,
+        func.lower(Salary.month) == current_month,
         Salary.year == current_year
     ).all()
 
@@ -331,8 +331,8 @@ def salary_overview():
     paid_count = db.session.query(
         func.count(Salary.id)
     ).filter(
-        Salary.status == 'paid',
-        Salary.month == current_month,
+        func.lower(Salary.status) == 'paid',
+        func.lower(Salary.month) == current_month,
         Salary.year == current_year
     ).scalar() or 0
 
@@ -343,8 +343,8 @@ def salary_overview():
     unpaid_count = db.session.query(
         func.count(Salary.id)
     ).filter(
-        Salary.status == 'unpaid',
-        Salary.month == current_month,
+        func.lower(Salary.status) == 'unpaid',
+        func.lower(Salary.month) == current_month,
         Salary.year == current_year
     ).scalar() or 0
 
@@ -377,8 +377,8 @@ def salary_overview():
             Salary.teacher_id == Teacher.id
         )
         .filter(
-            Salary.status == 'unpaid',
-            Salary.month == current_month,
+            func.lower(Salary.status) == 'unpaid',
+            func.lower(Salary.month) == current_month,
             Salary.year == current_year
         )
         .distinct()
@@ -402,16 +402,16 @@ def salary_overview():
     total_paid_amount = db.session.query(
         func.sum(Salary.amount)
     ).filter(
-        Salary.status == 'paid',
-        Salary.month == current_month,
+        func.lower(Salary.status) == 'paid',
+        func.lower(Salary.month) == current_month,
         Salary.year == current_year
     ).scalar() or 0
 
     total_unpaid_amount = db.session.query(
         func.sum(Salary.amount)
     ).filter(
-        Salary.status == 'unpaid',
-        Salary.month == current_month,
+        func.lower(Salary.status) == 'unpaid',
+        func.lower(Salary.month) == current_month,
         Salary.year == current_year
     ).scalar() or 0
 
