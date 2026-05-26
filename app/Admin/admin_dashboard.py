@@ -38,7 +38,7 @@ def total_enrolled():
         return jsonify({"error": "Admin only"}), 403
 
     current_year = datetime.now().year
-    current_month = datetime.now().month
+    current_month = datetime.now().strftime("%b").lower()
 
     months = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -366,34 +366,28 @@ def salary_overview():
     # 👨‍🏫 UNPAID TEACHERS
     # =====================================================
 
-    unpaid_records = (
-        db.session.query(
-            Teacher.id,
-            Teacher.fullName,
-            Salary.amount
-        )
-        .join(
-            Salary,
-            Salary.teacher_id == Teacher.id
-        )
-        .filter(
-            func.lower(Salary.status) == 'unpaid',
-            func.lower(Salary.month) == current_month,
-            Salary.year == current_year
-        )
-        .distinct()
-        .all()
-    )
-
+    unpaid_salary_rows = Salary.query.filter(
+        func.lower(Salary.status) == 'unpaid',
+        func.lower(Salary.month) == current_month,
+        Salary.year == current_year
+    ).all()
+        
     unpaid_teachers = []
 
-    for teacher_id, full_name, amount in unpaid_records:
-
+    for salary in unpaid_salary_rows:
+        
+        teacher = Teacher.query.filter_by(
+            id=salary.teacher_id
+         ).first()
+        
         unpaid_teachers.append({
-            "id": teacher_id,
-            "name": full_name,
-            "amount": amount
+            "id": salary.teacher_id,
+            "name": teacher.fullName if teacher else "Unknown Teacher",
+            "amount": float(salary.amount or 0)
         })
+
+    print(unpaid_teachers)
+    
 
     # =====================================================
     # 💰 TOTAL PAID & UNPAID AMOUNT
