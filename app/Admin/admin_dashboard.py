@@ -375,10 +375,14 @@ def salary_overview():
     unpaid_teachers = []
 
     for salary in unpaid_salary_rows:
+
+        print("SALARY TEACHER ID:", salary.teacher_id)
         
         teacher = Teacher.query.filter_by(
             id=salary.teacher_id
          ).first()
+        
+        print("TEACHER DATA:", teacher)
         
         unpaid_teachers.append({
             "id": salary.teacher_id,
