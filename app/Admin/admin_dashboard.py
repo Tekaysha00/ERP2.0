@@ -310,19 +310,33 @@ def salary_overview():
             "error": "Admin only"
         }), 403
 
-    current_month = datetime.now().strftime("%b").lower()
+    current_month_num = str(datetime.now().month)
+    current_month_num_2 = datetime.now().strftime("%m")
+    current_month_short = datetime.now().strftime("%b").lower()
+    current_month_full = datetime.now().strftime("%B").lower()
+
+    current_year = datetime.now().year
+
+    month_filter = (
+    (func.lower(Salary.month) == current_month_short) |
+    (func.lower(Salary.month) == current_month_full) |
+    (Salary.month == current_month_num) |
+    (Salary.month == current_month_num_2)
+    )
+
+
+
     all_salary = Salary.query.all()
     for s in all_salary:
         print("MONTH:", s.month)
         print("STATUS:", s.status)
-    current_year = datetime.now().year
 
     # =====================================================
     # 📊 CURRENT MONTH SALARY RECORDS
     # =====================================================
 
     salary_records = db.session.query(Salary).filter(
-        func.lower(Salary.month) == current_month,
+        month_filter,
         Salary.year == current_year
     ).all()
 
@@ -336,7 +350,7 @@ def salary_overview():
         func.count(Salary.id)
     ).filter(
         func.lower(Salary.status) == 'paid',
-        func.lower(Salary.month) == current_month,
+        month_filter,
         Salary.year == current_year
     ).scalar() or 0
 
@@ -348,7 +362,7 @@ def salary_overview():
         func.count(Salary.id)
     ).filter(
         func.lower(Salary.status) == 'unpaid',
-        func.lower(Salary.month) == current_month,
+        month_filter,
         Salary.year == current_year
     ).scalar() or 0
 
@@ -372,7 +386,7 @@ def salary_overview():
 
     unpaid_salary_rows = Salary.query.filter(
         func.lower(Salary.status) == 'unpaid',
-        func.lower(Salary.month) == current_month,
+        month_filter,
         Salary.year == current_year
     ).all()
         
@@ -405,7 +419,7 @@ def salary_overview():
         func.sum(Salary.amount)
     ).filter(
         func.lower(Salary.status) == 'paid',
-        func.lower(Salary.month) == current_month,
+        month_filter,
         Salary.year == current_year
     ).scalar() or 0
 
@@ -413,7 +427,7 @@ def salary_overview():
         func.sum(Salary.amount)
     ).filter(
         func.lower(Salary.status) == 'unpaid',
-        func.lower(Salary.month) == current_month,
+        month_filter,
         Salary.year == current_year
     ).scalar() or 0
 
@@ -424,7 +438,7 @@ def salary_overview():
     return jsonify({
         "success": True,
 
-        "current_month": current_month,
+        "current_month": current_month_full,
         "current_year": current_year,
 
         "total_salary_records": total_salary_records,
