@@ -482,7 +482,8 @@ def get_all_live_classes():
     }), 200
            
 
-# =========== VIEW ALL EXAM LINK ======= 
+
+# =========== VIEW ALL EXAM LINK =======
 
 @dashboard_bp.route('/exam-links', methods=['GET'])
 @jwt_required()
@@ -492,25 +493,41 @@ def get_all_exams():
 
     # 🔐 Only Admin
     if claims.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
+        return jsonify({
+            "error": "Admin only"
+        }), 403
 
     # 📥 Fetch All Exams
     exams = ExamLink.query.order_by(
         ExamLink.exam_time.desc()
     ).all()
 
-    # 📤 Response
-    return jsonify([
-        {
+    result = []
+
+    for e in exams:
+
+        result.append({
+
+            # unique id
             "id": e.id,
-            "class_id": e.class_id,
-            "subject": e.subject,
-            "teacher_id": e.teacher_id,
-            "exam_link": e.exam_link,
-            "exam_time": e.exam_time.strftime("%Y-%m-%d %H:%M")
-        }
-        for e in exams
-    ]), 200
+
+            # title shown on dashboard
+            "title": f"{e.subject} - Class {e.class_id}",
+
+            # exam link
+            "link": e.exam_link,
+
+            # extra info
+            "message": (
+                f"Exam Time: "
+                f"{e.exam_time.strftime('%d %b %Y %I:%M %p')}"
+            )
+        })
+
+    return jsonify({
+        "success": True,
+        "data": result
+    }), 200
 
 # ======== VIEW - NOTICE JST FOR CHECK WITH DUMMY ===== =
 
