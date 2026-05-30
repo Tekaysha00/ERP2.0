@@ -240,9 +240,6 @@ def get_all_student_issues():
 
 
 
-
-# ===== view notices ===
-
 # ================= GET NOTICES =================
 
 @notices_bp.route('/get-notices', methods=['GET'])
@@ -298,3 +295,50 @@ def get_notices():
         })
 
     return jsonify(data), 200
+
+
+
+# ================= DELETE NOTICE =================
+
+@notices_bp.route('/delete-notice/<int:notice_id>', methods=['DELETE'])
+@jwt_required()
+def delete_notice(notice_id):
+
+    try:
+        claims = get_jwt()
+
+        if claims.get("role") != "admin":
+            return jsonify({
+                "success": False,
+                "message": "Only admin can delete notices"
+            }), 403
+
+        notice = Notice.query.get(notice_id)
+
+        if not notice:
+            return jsonify({
+                "success": False,
+                "message": "Notice not found"
+            }), 404
+
+        # delete attachment file
+        if notice.attachment:
+            file_path = notice.attachment.lstrip("/")
+
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+        db.session.delete(notice)
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Notice deleted successfully"
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
