@@ -144,6 +144,7 @@ def create_live_class():
     }), 201
 
 
+
 # ========= RAISE AN ISSUE =======
 
 UPLOAD_FOLDER = 'uploads/issues'
@@ -339,24 +340,13 @@ def get_my_live_classes():
 
     claims = get_jwt()
 
-    # 🔐 ONLY TEACHER / STAFF
     if claims.get("role") not in ["teacher", "staff"]:
-
         return jsonify({
             "error": "Only teachers allowed"
         }), 403
 
-    teacher_id = claims.get("teacher_id")
-
-    if not teacher_id:
-
-        return jsonify({
-            "error": "Teacher ID missing"
-        }), 400
-
-    # =====================================================
-    # FETCH CLASSES
-    # =====================================================
+    # CHANGE THIS
+    teacher_id = get_jwt_identity()
 
     classes = LiveClass.query.filter_by(
         teacher_id=teacher_id
@@ -367,20 +357,12 @@ def get_my_live_classes():
     result = []
 
     for c in classes:
-
         result.append({
-
             "id": c.id,
-
             "class_id": c.class_id,
-
             "subject": c.subject,
-
             "link": c.meeting_link,
-
-            "time": c.start_time.strftime(
-                "%Y-%m-%d %H:%M"
-            )
+            "time": c.start_time.strftime("%Y-%m-%d %H:%M")
         })
 
     return jsonify({
@@ -510,3 +492,6 @@ def get_all_homeworks():
         })
 
     return jsonify(result)
+
+
+
