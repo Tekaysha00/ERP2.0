@@ -9,7 +9,7 @@ from app.extensions import db
 
 
 
-assignment_bp = Blueprint('admin_main', __name__, url_prefix='/api/admin')
+assignment_bp = Blueprint('assignment_supervision', __name__, url_prefix='/api/admin')
 
 @assignment_bp.route('/homework-submissions', methods=['GET'])
 @jwt_required()
