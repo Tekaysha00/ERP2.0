@@ -4,7 +4,7 @@ from app.models.student_model import Student
 from flask import url_for
 from app.utils.helpers import format_classname
 from app.models.notice_model import Notice
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.models.exam_link import ExamLink
 from app.models.raise_issue import Issue
 from app.models.live_class import LiveClass
@@ -134,9 +134,12 @@ def get_live_classes():
 
     class_id = int(student.classname.split()[-1])
 
+    cutoff_time = datetime.utcnow() - timedelta(hours=24)
+
     
-    classes = LiveClass.query.filter_by(
-        class_id=class_id
+    classes = LiveClass.query.filter(
+        LiveClass.class_id == class_id,
+        LiveClass.start_time >= cutoff_time
     ).order_by(
         LiveClass.start_time.desc()
     ).all()
