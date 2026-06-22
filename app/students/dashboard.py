@@ -144,17 +144,7 @@ def get_live_classes():
         LiveClass.start_time.desc()
     ).all()
 
-    # 🔥 dummy fallback
-    if not classes:
-        return jsonify([
-            {
-                "id": 1,
-                "class_id": class_id,
-                "subject": "Math",
-                "link": "https://dummy-live-class.com",
-                "time": "2026-01-10 10:00"
-            }
-        ]), 200
+  
 
     return jsonify([
         {
