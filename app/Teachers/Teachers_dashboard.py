@@ -6,7 +6,7 @@ from app.models.teacher_model import Teacher
 #live-class
 from app.models.live_class import LiveClass
 from app.extensions import db
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.utils.jitsi_meet import generate_meeting_link
 
 #issue
@@ -339,8 +339,11 @@ def get_my_live_classes():
     # CHANGE THIS
     teacher_id = get_jwt_identity()
 
-    classes = LiveClass.query.filter_by(
-        teacher_id=teacher_id
+    cutoff_time = datetime.utcnow() - timedelta(hours=24)
+
+    classes = LiveClass.query.filter(
+        LiveClass.teacher_id == teacher_id,
+        LiveClass.start_time >= cutoff_time
     ).order_by(
         LiveClass.start_time.desc()
     ).all()
