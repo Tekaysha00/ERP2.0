@@ -134,7 +134,12 @@ def get_live_classes():
 
     class_id = int(student.classname.split()[-1])
 
-    classes = LiveClass.query.filter_by(class_id=class_id).all()
+    
+    classes = LiveClass.query.filter_by(
+        class_id=class_id
+    ).order_by(
+        LiveClass.start_time.desc()
+    ).all()
 
     # 🔥 dummy fallback
     if not classes:
