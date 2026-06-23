@@ -11,6 +11,7 @@ from app.utils.helpers import format_classname
 import os
 from werkzeug.utils import secure_filename
 from app.models.homework_model import Homework
+from app.models.teacher_model import Teacher
 
 
 student_bp_view = Blueprint('student_bp_view', __name__, url_prefix='/api/student')
@@ -161,7 +162,23 @@ def upload_homework():
         "file_url": file_path
     })
 
+# ====== Teacher List For Homework Submit ======
 
+@student_bp_view.route('/teachers', methods=['GET'])
+@jwt_required()
+def get_teachers():
+
+    teachers = Teacher.query.all()
+
+    return jsonify({
+        "teachers": [
+            {
+                "id": teacher.id,
+                "name": teacher.FullName
+            }
+            for teacher in teachers
+        ]
+    }), 200
 
 # ====== view homework uploaded ==
 @student_bp_view.route('/my-homeworks/<int:student_id>', methods=['GET'])
