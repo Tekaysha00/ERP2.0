@@ -331,7 +331,7 @@ def initiate_payment():
 
         else:
 
-            currency = "inr"
+            currency = "INR"
 
             razorpay_order = razorpay_client.order.create({
 
@@ -341,6 +341,7 @@ def initiate_payment():
 
                 "payment_capture": 1
             })
+            print("RAZORPAY ORDER:", razorpay_order)
 
             payment_gateway = "razorpay"
 
@@ -416,6 +417,7 @@ def initiate_payment():
             "checkout_url": checkout_url,
 
             "session_id": gateway_order_id,
+            "order_id": gateway_order_id,
 
             "amount": total_amount,
 
