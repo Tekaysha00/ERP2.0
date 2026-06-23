@@ -317,6 +317,11 @@ def submit_attendance():
         date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+    
+    print("===== DUPLICATE CHECK =====")
+    print("class_id =", class_id)
+    print("section =", repr(section))
+    print("date_obj =", date_obj)
 
     # ------------ duplicate check ------------
     existing = StudentAttendance.query.filter_by(
@@ -324,6 +329,9 @@ def submit_attendance():
         section=section,
         attendance_date=date_obj
     ).first()
+    
+    print("existing =", existing)
+    print("existing type =", type(existing))
 
     if existing:
         return jsonify({"error": "Attendance already submitted for this date"}), 409
