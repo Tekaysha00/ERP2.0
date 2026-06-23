@@ -175,14 +175,22 @@ def get_teacher(teacher_id):
 
 @teacher_bp_view.route('', methods=['GET'])
 def get_all_teachers():
+
     teachers = Teacher.query.all()
-    return jsonify([{
-        'id': t.id,
-        'fullName': t.fullName,
-        'mobile': t.mobile,
-        'District': t.District,
-        'photo': build_teacher_photo_url(t)
-    } for t in teachers])
+
+    return jsonify({
+        "teachers": [
+            {
+                "id": t.id,
+                "name": t.fullName,
+                "mobile": t.mobile,
+                "email": t.email,
+                "district": t.district,
+                "state": t.state
+            }
+            for t in teachers
+        ]
+    }), 200
 
 # ========================= TEACHER PROFILE DETAILS =========================
 
